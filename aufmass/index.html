@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fenster-Aufmaß · Schwarzwald Schreinerei</title>
+<meta name="theme-color" content="#2A2A28">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Aufmaß">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../app.css">
+<link rel="stylesheet" href="aufmass.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <img class="top-logo" src="../logo.jpg" alt="Schwarzwald Schreinerei">
+    <div class="top-title" id="topTitle">Aufmaß</div>
+    <span class="saved" id="saved" aria-live="polite"></span>
+    <button class="me" id="meBtn" type="button" hidden><span class="me-dot" id="meDot"></span><span id="meName"></span></button>
+    <button class="icon-only" id="menuBtn" type="button" aria-label="Menü" hidden>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="status" id="status" hidden></div>
+</header>
+
+<!-- Anmelden -->
+<section class="gate" id="loginView" hidden>
+  <form class="gate-card" id="loginForm">
+    <h1>Anmelden</h1>
+    <p>Gib den Team-Code der Schreinerei ein. Danach bleibst du auf diesem Gerät angemeldet.</p>
+    <label for="teamCode">Team-Code</label>
+    <input id="teamCode" type="password" autocomplete="current-password" required>
+    <button class="btn primary big" type="submit" id="loginBtn">Anmelden</button>
+    <div class="form-msg" id="loginMsg" role="alert"></div>
+  </form>
+</section>
+
+<!-- Wer -->
+<section class="gate" id="whoView" hidden>
+  <div class="gate-card">
+    <h1>Wer misst auf?</h1>
+    <p>Dein Name steht später im Aufmaßprotokoll.</p>
+    <div class="who-list" id="whoList"></div>
+    <form class="who-new" id="whoForm"><input id="whoInput" placeholder="Anderer Name"><button class="btn" type="submit">Weiter</button></form>
+  </div>
+</section>
+
+<!-- Liste der Aufmaße -->
+<main id="listView" hidden>
+  <div class="wrap">
+    <div class="list-head">
+      <h1 class="page-h">Aufmaße</h1>
+      <input id="search" type="search" placeholder="Kunde oder Projekt suchen …" aria-label="Suchen">
+      <button class="btn primary big" id="newBtn" type="button">+ Neues Aufmaß</button>
+    </div>
+    <div id="amList" class="am-list"></div>
+  </div>
+</main>
+
+<!-- Ein Aufmaß -->
+<main id="editView" hidden>
+  <div class="ed">
+    <aside class="ed-side">
+      <button class="btn back" id="backBtn" type="button">← Alle Aufmaße</button>
+      <form class="head-fields" id="headForm" autocomplete="off">
+        <label>Kunde<input id="hKunde" data-h="kunde"></label>
+        <label>Bauvorhaben / Projekt<input id="hProjekt" data-h="projekt"></label>
+        <label>Adresse<input id="hAdresse" data-h="adresse"></label>
+        <div class="two">
+          <label>Datum<input id="hDatum" data-h="datum" type="date"></label>
+          <label>Aufgemessen von<input id="hVon" data-h="aufgemessen_von"></label>
+        </div>
+      </form>
+      <h2 class="side-h">Positionen <span class="n" id="posCount"></span></h2>
+      <ol class="pos-list" id="posList"></ol>
+      <button class="btn primary big" id="addPosBtn" type="button">+ Position</button>
+      <div class="side-actions">
+        <button class="btn" id="protoBtn" type="button">Protokoll / Drucken</button>
+        <button class="btn" id="csvBtn" type="button">Bestellliste (CSV)</button>
+      </div>
+    </aside>
+
+    <section class="ed-main" id="posEditor">
+      <div class="empty" id="noPos"><b>Noch keine Position</b>Mit „+ Position“ das erste Fenster oder die erste Tür anlegen.</div>
+      <div id="posForm" hidden>
+        <div class="pos-top">
+          <div class="pos-nr" id="pNr"></div>
+          <label class="grow">Raum / Bezeichnung<input id="pRaum" placeholder="z. B. Küche, Bad OG"></label>
+          <label class="stk">Stück<input id="pStk" type="number" min="1" inputmode="numeric"></label>
+          <div class="pos-tools">
+            <button class="btn" id="dupPos" type="button" title="Position kopieren">Kopieren</button>
+            <button class="btn danger" id="delPos" type="button">Löschen</button>
+          </div>
+        </div>
+
+        <h3>Element</h3>
+        <div class="types" id="typeGrid" role="radiogroup" aria-label="Elementtyp"></div>
+        <div class="grid-tools" id="gridTools" hidden>
+          <span>Felder:</span>
+          <label>Spalten <select id="gCols"></select></label>
+          <label>Reihen <select id="gRows"></select></label>
+          <label class="toggle"><input id="gStulp" type="checkbox"><span>Stulp (ohne Pfosten)</span></label>
+        </div>
+
+        <h3>Maße <span class="muted">Rohbau-/Lichtmaß in mm</span></h3>
+        <div class="measure-opts">
+          <label class="toggle"><input id="twoMeas" type="checkbox"><span>Zweites Maß (oben/unten, links/rechts)</span></label>
+          <label class="toggle"><input id="showTeil" type="checkbox"><span>Teilungsmaße</span></label>
+        </div>
+        <div class="measure" id="measure">
+          <div class="m-top" id="mTop"></div>
+          <div class="m-left" id="mLeft"></div>
+          <div class="m-sketch" id="sketch" aria-label="Skizze – Feld antippen, um die Öffnungsart zu ändern"></div>
+          <div class="m-right" id="mRight"></div>
+          <div class="m-bottom" id="mBottom"></div>
+        </div>
+        <p class="hint-line">Feld in der Skizze antippen → Öffnungsart wählen. Ansicht <b>von innen</b>.</p>
+        <div class="warn" id="measWarn" hidden></div>
+
+        <div class="result" id="result"></div>
+
+        <h3>Einbau</h3>
+        <div class="chipsel" data-f="einbau"></div>
+
+        <h3>Ausführung</h3>
+        <div class="opts" id="optsBox"></div>
+
+        <h3>Notiz</h3>
+        <span class="with-mic"><textarea id="pNotiz" rows="3" placeholder="Besonderheiten, Anschluss, Zugang …"></textarea>
+          <button class="mic" type="button" data-mic="pNotiz" aria-label="Notiz sprechen"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Zm-7 9a7 7 0 0 0 14 0M12 19v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></span>
+
+        <h3>Fotos</h3>
+        <div class="photos" id="photos"></div>
+        <label class="btn photo-add">+ Foto aufnehmen / wählen<input id="photoIn" type="file" accept="image/*" capture="environment" multiple hidden></label>
+
+        <div class="next-row"><button class="btn primary big" id="nextPos" type="button">Nächste Position →</button></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- Protokoll -->
+<main id="protoView" hidden>
+  <div class="proto-bar no-print">
+    <button class="btn" id="protoBack" type="button">← Zurück</button>
+    <button class="btn primary" id="printBtn" type="button">Drucken / Als PDF speichern</button>
+  </div>
+  <div class="proto" id="proto"></div>
+</main>
+
+<!-- Ziffernblock -->
+<div class="keypad" id="keypad" hidden aria-label="Ziffernblock">
+  <div class="kp-head"><span id="kpLabel"></span><span class="kp-val" id="kpVal"></span></div>
+  <div class="kp-keys">
+    <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+    <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+    <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+    <button type="button" data-k="C" class="kp-c">C</button><button type="button" data-k="0">0</button><button type="button" data-k="B" class="kp-b" aria-label="Löschen">⌫</button>
+  </div>
+  <div class="kp-foot">
+    <button type="button" class="btn" data-k="X">Fertig</button>
+    <button type="button" class="btn primary" data-k="N">Weiter →</button>
+  </div>
+</div>
+
+<!-- Öffnungsart -->
+<div class="modal" id="cellModal" hidden>
+  <div class="modal-card">
+    <h2>Öffnungsart</h2>
+    <p class="muted">Ansicht von innen</p>
+    <div class="cell-types" id="cellTypes"></div>
+    <div class="modal-actions"><button class="btn" type="button" id="cellClose">Abbrechen</button></div>
+  </div>
+</div>
+
+<!-- Menü -->
+<div class="modal" id="menuModal" hidden>
+  <div class="modal-card">
+    <h2>Menü</h2>
+    <div class="menu-list">
+      <a class="btn" href="../">Zu den Aufgaben</a>
+      <button class="btn" type="button" id="mSettings">Einstellungen (Abzüge, Toleranz)</button>
+      <button class="btn" type="button" id="mWho">Name wechseln</button>
+      <button class="btn" type="button" id="mHome">Auf den Home-Bildschirm legen</button>
+      <button class="btn" type="button" id="mLogout">Abmelden</button>
+    </div>
+    <div class="settings" id="settingsBox" hidden></div>
+    <div class="home-help" id="homeHelp" hidden>
+      <p><b>iPhone / iPad (Safari):</b> Teilen-Symbol <span class="kbd">□↑</span> → <b>„Zum Home-Bildschirm“</b>.</p>
+      <p><b>Android (Chrome):</b> <span class="kbd">⋮</span> → <b>„Zum Startbildschirm hinzufügen“</b>.</p>
+    </div>
+    <div class="modal-actions"><button class="btn" type="button" id="menuClose">Schließen</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script src="../lib/supabase.js"></script>
+<script src="../config.js"></script>
+<script src="aufmass.js"></script>
+</body>
+</html>
