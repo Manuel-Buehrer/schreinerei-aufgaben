@@ -325,14 +325,15 @@
     s += `<circle cx="${r1(cx)}" cy="${r1(cy + ph * 0.4)}" r="${r1(Math.max(1.5, 9 * ctx.s))}" fill="${ctx.line}"/>`;
     return s;
   }
-  // Öffnungslinien: durchgezogen (Ansicht von innen, Flügel öffnet zum Betrachter), Spitze zur Bandseite
+  // Öffnungslinien (Angebotszeichnung, Ansicht von innen): durchgezogen,
+  // offene Seite = Bandseite, Spitze = Griffseite. Kippen: Bänder unten, Spitze oben.
   function openLines(type, x, y, w, h, ctx) {
     const st = `fill="none" stroke="${ctx.line}" stroke-width="${ctx.sw * 0.9}" stroke-linejoin="round" class="sk-open"`;
     let s = "";
     const hingeL = /-L$/.test(type) && type[0] !== "S", hingeR = /-R$/.test(type) && type[0] !== "S";
-    if (hingeL) s += `<polyline points="${r1(x + w)},${r1(y)} ${r1(x)},${r1(y + h / 2)} ${r1(x + w)},${r1(y + h)}" ${st}/>`;
-    if (hingeR) s += `<polyline points="${r1(x)},${r1(y)} ${r1(x + w)},${r1(y + h / 2)} ${r1(x)},${r1(y + h)}" ${st}/>`;
-    if (type === "K" || type.startsWith("DK")) s += `<polyline points="${r1(x)},${r1(y)} ${r1(x + w / 2)},${r1(y + h)} ${r1(x + w)},${r1(y)}" ${st}/>`;
+    if (hingeL) s += `<polyline points="${r1(x)},${r1(y)} ${r1(x + w)},${r1(y + h / 2)} ${r1(x)},${r1(y + h)}" ${st}/>`;
+    if (hingeR) s += `<polyline points="${r1(x + w)},${r1(y)} ${r1(x)},${r1(y + h / 2)} ${r1(x + w)},${r1(y + h)}" ${st}/>`;
+    if (type === "K" || type.startsWith("DK")) s += `<polyline points="${r1(x)},${r1(y + h)} ${r1(x + w / 2)},${r1(y)} ${r1(x + w)},${r1(y + h)}" ${st}/>`;
     return s;
   }
 
