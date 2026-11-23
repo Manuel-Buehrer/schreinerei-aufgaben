@@ -72,15 +72,11 @@
   <div class="ed">
     <aside class="ed-side">
       <button class="btn back" id="backBtn" type="button">← Alle Aufmaße</button>
-      <form class="head-fields" id="headForm" autocomplete="off">
-        <label>Kunde<input id="hKunde" data-h="kunde"></label>
-        <label>Bauvorhaben / Projekt<input id="hProjekt" data-h="projekt"></label>
-        <label>Adresse<input id="hAdresse" data-h="adresse"></label>
-        <div class="two">
-          <label>Datum<input id="hDatum" data-h="datum" type="date"></label>
-          <label>Aufgemessen von<input id="hVon" data-h="aufgemessen_von"></label>
-        </div>
-      </form>
+      <div class="side-title" id="sideTitle"></div>
+      <button class="pos-item proj" id="projItem" type="button">
+        <span class="proj-ic" aria-hidden="true">⚙</span>
+        <span class="pos-txt"><b>Projekt &amp; Voreinstellungen</b><span id="projSum"></span></span>
+      </button>
       <h2 class="side-h">Positionen <span class="n" id="posCount"></span></h2>
       <ol class="pos-list" id="posList"></ol>
       <button class="btn primary big" id="addPosBtn" type="button">+ Position</button>
@@ -91,7 +87,20 @@
     </aside>
 
     <section class="ed-main" id="posEditor">
-      <div class="empty" id="noPos"><b>Noch keine Position</b>Mit „+ Position“ das erste Fenster oder die erste Tür anlegen.</div>
+      <div id="projForm" hidden>
+        <h2 class="main-h">Projekt</h2>
+        <form class="head-fields" id="headForm" autocomplete="off">
+          <label>Kunde<input id="hKunde" data-h="kunde"></label>
+          <label>Bauvorhaben / Projekt<input id="hProjekt" data-h="projekt"></label>
+          <label class="wide">Adresse<input id="hAdresse" data-h="adresse"></label>
+          <label>Datum<input id="hDatum" data-h="datum" type="date"></label>
+          <label>Aufgemessen von<input id="hVon" data-h="aufgemessen_von"></label>
+        </form>
+        <h2 class="main-h">Voreinstellungen <span class="muted">gelten für alle Positionen – einzelne Positionen können abweichen</span></h2>
+        <div class="opts" id="vorgabenBox"></div>
+        <div class="next-row"><button class="btn primary big" id="toFirstPos" type="button">Weiter zu den Positionen →</button></div>
+      </div>
+      <div class="empty" id="noPos" hidden><b>Noch keine Position</b>Mit „+ Position“ das erste Fenster oder die erste Tür anlegen.</div>
       <div id="posForm" hidden>
         <div class="pos-top">
           <div class="pos-nr" id="pNr"></div>
@@ -130,10 +139,13 @@
         <div class="result" id="result"></div>
 
         <h3>Einbau</h3>
-        <div class="chipsel" data-f="einbau"></div>
+        <div class="chipsel" id="einbauBox"></div>
 
         <h3>Ausführung</h3>
-        <div class="opts" id="optsBox"></div>
+        <div class="ausf-sum" id="ausfSum"></div>
+        <div class="opts" id="optsBox" hidden></div>
+        <h3>Position</h3>
+        <div class="opts" id="posOptsBox"></div>
 
         <h3>Notiz</h3>
         <span class="with-mic"><textarea id="pNotiz" rows="3" placeholder="Besonderheiten, Anschluss, Zugang …"></textarea>
