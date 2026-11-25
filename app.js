@@ -371,17 +371,97 @@
   $("addForm").addEventListener("focusout", () => setTimeout(() => {
     if (!$("addForm").contains(document.activeElement) && !$("addTitle").value) $("addForm").classList.remove("open");
   }, 150));
+  // ---------- Schnelleingabe: ein Satz → Projekt, Aufgabe, Person, Datum, dringend ----------
+  // z. B. „Familie Müller Küchenfronten bestellen bis Freitag Marco dringend“
+  const WDAYS = ["sonntag", "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag"];
+  const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const W = "[A-Za-zÄÖÜäöüß0-9\\-]";
+  function nextWeekday(wd, forceNext) {
+    const d = new Date(); let diff = (wd - d.getDay() + 7) % 7; if (diff === 0 || forceNext) diff += diff === 0 ? 7 : 0; if (forceNext && diff < 7 && (wd - d.getDay() + 7) % 7 !== 0) diff += 0;
+    d.setDate(d.getDate() + diff); return dayStr(d);
+  }
+  function parseQuick(raw) {
+    let t = " " + raw.replace(/\s+/g, " ").trim() + " ";
+    const r = { projekt: "", zustaendig: "", faellig: "", dringend: false };
+    const cut = re => { const m = t.match(re); if (m) t = t.replace(m[0], " "); return m; };
+    const PRE = "(?:\\s(?:bis|am|ab|zum|spätestens|spaetestens|bis zum|für|fuer))?";
+    // dringend
+    if (cut(/\s(dringend|sofort|asap|eilig|eilt|wichtig)(?=[\s,.!])/i)) r.dringend = true;
+    // Datum
+    let m;
+    if ((m = cut(new RegExp(PRE + "\\s(\\d{1,2})\\.(\\d{1,2})\\.?(\\d{2,4})?(?=[\\s,.])", "i")))) {
+      const y = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : new Date().getFullYear();
+      let d = y + "-" + pad(Number(m[2])) + "-" + pad(Number(m[1])); if (!m[3] && d < today()) d = (y + 1) + d.slice(4); r.faellig = d;
+    } else if ((m = cut(new RegExp(PRE + "\\s(übermorgen|uebermorgen)(?=[\\s,.])", "i")))) r.faellig = addDays(today(), 2);
+    else if ((m = cut(new RegExp(PRE + "\\s(heute)(?=[\\s,.])", "i")))) r.faellig = today();
+    else if ((m = cut(new RegExp(PRE + "\\s(morgen)(?=[\\s,.])", "i")))) r.faellig = addDays(today(), 1);
+    else if ((m = cut(new RegExp(PRE + "\\s(?:in\\s)?(\\d+)\\s(tagen|tage|tag)(?=[\\s,.])", "i")))) r.faellig = addDays(today(), Number(m[1]));
+    else if ((m = cut(new RegExp(PRE + "\\s(?:ende der woche|wochenende)(?=[\\s,.])", "i")))) r.faellig = nextWeekday(5);
+    else if ((m = cut(new RegExp(PRE + "\\s(?:nächste|naechste|kommende)\\s?woche(?=[\\s,.])", "i")))) { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); r.faellig = dayStr(d); }
+    else if ((m = cut(new RegExp(PRE + "\\s(?:(nächsten|naechsten|kommenden)\\s)?(" + WDAYS.join("|") + ")(?=[\\s,.])", "i")))) {
+      const wd = WDAYS.indexOf(m[2].toLowerCase()); const d = new Date(); let diff = (wd - d.getDay() + 7) % 7; if (diff === 0) diff = 7; if (m[1] && diff < 7) diff += 7; d.setDate(d.getDate() + diff); r.faellig = dayStr(d);
+    }
+    // Person (aus dem Team)
+    if ((m = cut(/\s(?:für|fuer)\s(?:mich|mir)(?=[\s,.])/i))) r.zustaendig = me;
+    if (!r.zustaendig) for (const p of S.team.map(x => x.name).sort((a, b) => b.length - a.length)) {
+      if ((m = cut(new RegExp("(?:\\s(?:für|fuer|an|durch|von|macht))?\\s" + reEsc(p) + "(?=[\\s,.!])", "i")))) { r.zustaendig = p; break; }
+    }
+    // Projekt/Kunde: bekanntes Projekt, „X: Aufgabe“, Stichwort oder „Familie/Firma/Herr/Frau X“
+    const known = [...new Set([...S.aufgaben.values()].map(a => a.projekt).filter(Boolean))].sort((a, b) => b.length - a.length);
+    for (const pj of known) {
+      if ((m = cut(new RegExp("(?:\\s(?:bei|für|fuer|projekt|kunde|kundin|baustelle))?\\s" + reEsc(pj) + "(?=[\\s,.:!-])", "i")))) { r.projekt = pj; break; }
+    }
+    if (!r.projekt && (m = t.match(/^\s*([^:]{2,40}?)\s*[:–]\s+(.+)$/))) { r.projekt = m[1].trim().replace(/^(?:bei|projekt|kunde|kundin|baustelle)\s+/i, ""); t = " " + m[2] + " "; }
+    if (!r.projekt && (m = cut(new RegExp("\\s(?:[bB]ei|[pP]rojekt|[kK]unde|[kK]undin|[bB]austelle|[fF]ür|[fF]uer)\\s((?:(?:familie|fam\\.|firma|fa\\.|herr|frau)\\s)?[A-ZÄÖÜ]" + W + "+)(?=[\\s,.:!])")))) r.projekt = m[1];
+    if (!r.projekt && (m = cut(new RegExp("\\s((?:familie|fam\\.|firma|fa\\.|herr|frau)\\s[A-ZÄÖÜ]" + W + "+)(?=[\\s,.:!])", "i")))) r.projekt = m[1];
+    if (r.projekt) r.projekt = r.projekt.replace(/^fam\.\s/i, "Familie ").replace(/^(\w)/, c => c.toUpperCase());
+    // Aufgabe aufräumen
+    let titel = t.replace(/\s+/g, " ").replace(/\s([,.!])/g, "$1").trim()
+      .replace(/^(?:[,.:\-–]\s*)+/, "").replace(/(?:\s*[,:\-–])+$/, "")
+      .replace(/^(?:und|bei|für|fuer|an|bis|am|zum|noch)\s+/i, "").replace(/\s+(?:und|bei|für|fuer|an|bis|am|zum)$/i, "").trim();
+    if (titel) titel = titel[0].toUpperCase() + titel.slice(1);
+    r.titel = titel || raw.trim();
+    return r;
+  }
+  const manual = { projekt: false, wer: false, faellig: false, dringend: false };
+  const auto = { projekt: "", wer: "", faellig: "", dringend: false };
+  [["addProjekt", "projekt"], ["addWer", "wer"], ["addFaellig", "faellig"], ["addDringend", "dringend"]].forEach(([id, k]) =>
+    $(id).addEventListener("change", () => { manual[k] = true; showParse(); }));
+  let parsed = null;
+  function showParse() {
+    const raw = $("addTitle").value, box = $("addParse");
+    parsed = raw.trim() ? parseQuick(raw) : null;
+    const setF = (k, id, v) => { if (manual[k]) return; const f = $(id); if (k === "dringend") { if (f.checked === auto[k]) f.checked = !!v; } else if (f.value === auto[k] || !f.value) { if (k === "wer" && v && ![...f.options].some(o => o.value === v)) { const o = el("option", "", v); o.value = v; f.appendChild(o); } f.value = v || ""; } auto[k] = k === "dringend" ? !!v : (v || ""); };
+    setF("projekt", "addProjekt", parsed && parsed.projekt); setF("wer", "addWer", parsed && parsed.zustaendig);
+    setF("faellig", "addFaellig", parsed && parsed.faellig); setF("dringend", "addDringend", parsed && parsed.dringend);
+    box.innerHTML = "";
+    if (!parsed) { box.hidden = true; return; }
+    const parts = [];
+    if (parsed.projekt) parts.push(["Projekt", parsed.projekt]);
+    if (parsed.zustaendig) parts.push(["Zuständig", parsed.zustaendig]);
+    if (parsed.faellig) { const f = fmtDue(parsed.faellig); parts.push(["Fällig", f ? f.text : parsed.faellig]); }
+    if (parsed.dringend) parts.push(["", "Dringend"]);
+    box.hidden = !parts.length;
+    if (!parts.length) return;
+    box.appendChild(el("span", "ap-l", "Erkannt:"));
+    box.appendChild(el("span", "ap-t", "„" + parsed.titel + "“"));
+    parts.forEach(([k, v]) => box.appendChild(el("span", "tag" + (v === "Dringend" ? " urgent" : ""), (k ? k + ": " : "") + v)));
+  }
+  $("addTitle").addEventListener("input", showParse);
+  function resetQuick() { Object.keys(manual).forEach(k => manual[k] = false); auto.projekt = auto.wer = auto.faellig = ""; auto.dringend = false; parsed = null; $("addParse").hidden = true; }
+
   $("addForm").addEventListener("submit", e => {
     e.preventDefault();
-    const titel = $("addTitle").value.trim();
-    if (!titel) { $("addTitle").focus(); return; }
+    const raw = $("addTitle").value.trim();
+    if (!raw) { $("addTitle").focus(); return; }
+    const titel = (parsed && parsed.titel) || raw;
     const ts = nowIso();
     mut("aufgaben", "INSERT", {
       id: uuid(), titel, projekt: $("addProjekt").value.trim(), zustaendig: $("addWer").value,
       faellig: $("addFaellig").value || null, dringend: $("addDringend").checked, notiz: "",
       erledigt: false, erledigt_am: null, erledigt_von: null, erstellt_am: ts, erstellt_von: me, geaendert_am: ts
     });
-    $("addTitle").value = ""; $("addDringend").checked = false; $("addFaellig").value = "";
+    $("addTitle").value = ""; $("addDringend").checked = false; $("addFaellig").value = ""; $("addProjekt").value = ""; $("addWer").value = ""; resetQuick();
     if (ui.view !== "offen") { ui.view = "offen"; }
     toast("Aufgabe eingetragen");
     $("addTitle").focus();
@@ -556,7 +636,7 @@
     rec.onresult = ev => {
       let txt = ""; for (let i = 0; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
       txt = txt.trim(); if (txt && !recBase) txt = txt[0].toUpperCase() + txt.slice(1);
-      recTarget.value = recBase + txt; if (recTarget.tagName === "TEXTAREA") autoGrow(recTarget);
+      recTarget.value = recBase + txt; if (recTarget.tagName === "TEXTAREA") autoGrow(recTarget); if (recTarget.id === "addTitle") recTarget.dispatchEvent(new Event("input", { bubbles: true }));
     };
     rec.onerror = ev => {
       const m = {

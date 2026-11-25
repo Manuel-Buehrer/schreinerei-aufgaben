@@ -65,12 +65,13 @@
 
     <form class="add" id="addForm" autocomplete="off">
       <div class="add-row">
-        <input id="addTitle" placeholder="Was ist zu tun?" aria-label="Neue Aufgabe" enterkeyhint="done">
+        <input id="addTitle" placeholder="Was ist zu tun? z. B. „Familie Müller Fronten bestellen bis Freitag Marco dringend“" aria-label="Neue Aufgabe" enterkeyhint="done">
         <button class="mic" type="button" data-mic="addTitle" aria-label="Aufgabe sprechen">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Zm-7 9a7 7 0 0 0 14 0M12 19v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </button>
         <button class="btn primary add-go" type="submit" aria-label="Hinzufügen"><span class="long">Hinzufügen</span><span class="short">+</span></button>
       </div>
+      <div class="add-parse" id="addParse" hidden></div>
       <div class="add-more">
         <input id="addProjekt" list="projektListe" placeholder="Projekt / Kunde" aria-label="Projekt">
         <select id="addWer" aria-label="Zuständig"></select>

@@ -221,3 +221,8 @@ button,input,select,textarea{font:inherit;color:inherit}
   .me span:last-child{max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
 @media (max-width:400px){ .top-logo{display:none} .top-title{border:0;padding-left:0} }
+
+/* Schnelleingabe: erkannte Angaben */
+.add-parse{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;padding:2px 2px 0}
+.add-parse .ap-l{color:var(--muted);font-weight:600}
+.add-parse .ap-t{font-weight:600}
