@@ -427,6 +427,12 @@
     if (!r.zustaendig) for (const p of S.team.map(x => x.name).sort((a, b) => b.length - a.length)) {
       if ((m = cut(new RegExp("(?:\\s(?:für|fuer|an|durch|von|macht))?\\s" + reEsc(p) + "(?=[\\s,.!])", "i")))) { r.zustaendig = p; break; }
     }
+    // Füllwörter aus gesprochenen Sätzen („Simon soll das erledigen und planen“, „bitte“)
+    const VERB = "(?:erledigen|machen|übernehmen|uebernehmen|planen|einplanen|kümmern|kuemmern|einteilen|organisieren)";
+    t = t.replace(new RegExp("\\s(?:soll|sollte|muss|müsste|muesste|kann|könnte|koennte|darf|möchte)(?:\\s(?:sich|das|es|dies|darum|drum|bitte|noch|dann|mal|auch))*\\s" + VERB + "(?:\\s(?:und|oder|bzw\\.?)\\s" + VERB + ")*(?=[\\s,.!])", "gi"), " ");
+    t = t.replace(new RegExp("\\s(?:und|bitte)\\s" + VERB + "(?=[\\s,.!]*$)", "i"), " ");
+    t = t.replace(/\s(?:bitte|mal)(?=[\s,.!])/gi, " ");
+    t = t.replace(/(\s[.!?])+(?=\s*$)/, " ").replace(/\.\s+\./g, ".");
     // Projekt/Kunde: bekanntes Projekt, „X: Aufgabe“, Stichwort oder „Familie/Firma/Herr/Frau X“
     const known = [...new Set([...S.aufgaben.values()].map(a => a.projekt).filter(Boolean))].sort((a, b) => b.length - a.length);
     for (const pj of known) {
@@ -440,11 +446,18 @@
       const segs = t.split(",").map(x => x.trim()).filter(Boolean);
       if (segs.length >= 2 && /^[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]*(?:\s[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]*)?$/.test(segs[segs.length - 1])) { r.projekt = segs.pop(); t = " " + segs.join(" ") + " "; }
     }
+    // „Gerüstbau Becker, Innentüre setzen …“: Name(n) vor dem ersten Komma = Kunde
+    if (!r.projekt && (m = t.match(/^\s*((?:[A-ZÄÖÜ][A-Za-zÄÖÜäöüß&.\-]*)(?:\s(?:[A-ZÄÖÜ&][A-Za-zÄÖÜäöüß&.\-]*|GmbH|KG|AG|e\.K\.)){0,3})\s*,\s*(.*[a-zäöüß].*)$/))) { r.projekt = m[1].trim(); t = " " + m[2] + " "; }
+    // Gesprochen ohne Komma: „Gerüstbau Becker Innentüre setzen“ → ab 3 großgeschriebenen Wörtern am Anfang sind alle bis auf das letzte der Kunde
+    if (!r.projekt && (m = t.match(/^\s*((?:[A-ZÄÖÜ][A-Za-zÄÖÜäöüß&.\-]*\s){3,5})(.*)$/))) {
+      const words = m[1].trim().split(/\s+/), last = words.pop();
+      if (/[a-zäöüß]/.test(m[2])) { r.projekt = words.join(" "); t = " " + last + " " + m[2] + " "; }
+    }
     if (t.split(",").length > 2) t = t.replace(/,/g, " ");
     if (r.projekt) r.projekt = r.projekt.replace(/^fam\.\s/i, "Familie ").replace(/^(\w)/, c => c.toUpperCase());
     // Aufgabe aufräumen
     let titel = t.replace(/\s+/g, " ").replace(/\s([,.!])/g, "$1").trim()
-      .replace(/^(?:[,.:\-–]\s*)+/, "").replace(/(?:\s*[,:\-–])+$/, "")
+      .replace(/^(?:[,.:\-–]\s*)+/, "").replace(/(?:\s*[,.:\-–])+$/, "").replace(/\.\s+(?=[a-zäöü])/g, " ")
       .replace(/^(?:und|bei|für|fuer|an|bis|am|zum|noch)\s+/i, "").replace(/\s+(?:und|bei|für|fuer|an|bis|am|zum)$/i, "").trim();
     if (titel) titel = titel[0].toUpperCase() + titel.slice(1);
     r.titel = titel || raw.trim();
