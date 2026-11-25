@@ -90,7 +90,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .add-row{display:flex;gap:8px}
 .add-row input{flex:1;min-width:0;font-size:18px;padding:12px 14px;border:1.5px solid var(--line2);border-radius:10px;background:var(--card)}
 .add-row input:focus{border-color:var(--red);outline:none}
-.add-more{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px}
+.add-more{display:grid;grid-template-columns:2fr 1fr 1fr 110px auto;gap:8px}
 .add-more input,.add-more select{min-width:0;padding:9px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--card2)}
 .add-go .short{display:none}
 @media (max-width:760px){.add-go .short{display:inline}}
@@ -226,3 +226,5 @@ button,input,select,textarea{font:inherit;color:inherit}
 .add-parse{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;padding:2px 2px 0}
 .add-parse .ap-l{color:var(--muted);font-weight:600}
 .add-parse .ap-t{font-weight:600}
+
+.cal-row{display:flex;gap:8px;flex-wrap:wrap}

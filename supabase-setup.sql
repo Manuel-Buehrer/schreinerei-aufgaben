@@ -25,6 +25,9 @@ create table if not exists public.eintraege (
   von text not null default '',
   am timestamptz not null default now()
 );
+-- Uhrzeit für Termine (Outlook)
+alter table public.aufgaben add column if not exists uhrzeit text not null default '';
+
 create index if not exists eintraege_aufgabe_idx on public.eintraege (aufgabe_id);
 
 create table if not exists public.schritte (
