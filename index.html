@@ -61,6 +61,14 @@
 <main id="mainView" hidden>
   <div class="wrap">
 
+    <div class="space-bar" id="spaceBar" hidden>
+      <div class="seg space" role="tablist" aria-label="Bereich">
+        <button type="button" id="spaceTeam" class="on">Team-Aufgaben</button>
+        <button type="button" id="spacePriv">🔒 Mein Büro</button>
+      </div>
+      <button class="btn" type="button" id="lockBtn" hidden>Mein Büro sperren</button>
+    </div>
+
     <section class="summary" id="summary" aria-label="Überblick"></section>
 
     <form class="add" id="addForm" autocomplete="off">
@@ -73,6 +81,7 @@
       </div>
       <div class="add-parse" id="addParse" hidden></div>
       <div class="add-more">
+        <select id="addBereich" aria-label="Bereich"><option value="">– Bereich –</option><option>Aufmaß</option><option>Produktion</option><option>Montage</option><option>Büro</option><option>Sonstiges</option></select>
         <input id="addProjekt" list="projektListe" placeholder="Projekt / Kunde" aria-label="Projekt">
         <input id="addOrt" placeholder="Ort / Adresse" aria-label="Ort oder Adresse">
         <select id="addWer" aria-label="Zuständig"></select>
@@ -90,6 +99,7 @@
         <button type="button" role="tab" data-view="erledigt">Erledigt</button>
       </div>
       <div class="chips" id="personChips" aria-label="Person"></div>
+      <div class="chips ber-chips" id="bereichChips" aria-label="Bereich"></div>
       <div class="filter-right">
         <select id="groupBy" aria-label="Gruppieren">
           <option value="projekt">nach Projekt</option>
@@ -119,6 +129,7 @@
     <div class="grid2">
       <label>Projekt / Kunde<input id="dProjekt" list="projektListe"></label>
       <label>Zuständig<select id="dWer"></select></label>
+      <label>Bereich<select id="dBereich"><option value="">– kein –</option><option>Aufmaß</option><option>Produktion</option><option>Montage</option><option>Büro</option><option>Sonstiges</option></select></label>
       <label class="wide">Ort / Adresse<span class="with-btn"><input id="dOrt" placeholder="z. B. Musterweg 5, Freiamt"><button class="btn" type="button" id="routeBtn" hidden>Route</button></span></label>
       <label>Von (optional)<input id="dAb" type="date"></label>
       <label>Fällig / bis<input id="dFaellig" type="date"></label>
@@ -213,6 +224,16 @@
   <div class="listen-main"><b>Ich höre zu …</b><span id="listenText">…</span></div>
   <button class="btn" type="button" id="listenCancel">Abbrechen</button>
   <button class="btn primary" type="button" id="listenDone">Fertig</button>
+</div>
+<div class="modal" id="privModal" hidden>
+  <form class="modal-card" id="privForm">
+    <h2>🔒 Mein Büro</h2>
+    <p class="muted">Dein privater Bereich – nur mit deinem eigenen Passwort. Die Meister sehen diese Einträge nicht.</p>
+    <label for="privCode">Passwort</label>
+    <input id="privCode" type="password" autocomplete="current-password" required>
+    <div class="form-msg" id="privMsg" role="alert"></div>
+    <div class="modal-actions"><button class="btn" type="button" id="privCancel">Abbrechen</button><button class="btn primary" type="submit">Öffnen</button></div>
+  </form>
 </div>
 <div class="toast" id="toast" role="status"></div>
 

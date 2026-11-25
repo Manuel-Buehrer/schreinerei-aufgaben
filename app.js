@@ -60,15 +60,17 @@
   }
 
   // ---------- Datenspeicher ----------
-  function supaStore() {
+  function supaStore(opt) {
+    opt = opt || { storageKey: "sws-auth", email: CFG.teamEmail, channel: "schreinerei-aufgaben" };
     const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, {
-      auth: { persistSession: true, autoRefreshToken: true, storageKey: "sws-auth" }
+      auth: { persistSession: true, autoRefreshToken: true, storageKey: opt.storageKey }
     });
     let channel = null;
     const chk = r => { if (r.error) throw r.error; return r.data; };
     return {
       async hasSession() { const { data } = await sb.auth.getSession(); return !!data.session; },
-      async login(code) { const r = await sb.auth.signInWithPassword({ email: CFG.teamEmail, password: code }); if (r.error) throw r.error; },
+      async login(code, email) { const r = await sb.auth.signInWithPassword({ email: email || opt.email, password: code }); if (r.error) throw r.error; },
+      async uid() { const { data } = await sb.auth.getSession(); return data.session ? data.session.user.id : null; },
       async logout() { await sb.auth.signOut(); },
       async loadAll() {
         const [a, s, e, t] = await Promise.all([
@@ -82,19 +84,20 @@
       async insert(t, row) {
         let r = await sb.from(t).insert(row);
         const c = Object.assign({}, row);
-        for (let i = 0; i < 3 && r.error; i++) { const k = ["uhrzeit", "ort", "faellig_ab"].find(x => x in c && new RegExp(x, "i").test(r.error.message || "")); if (!k) break; delete c[k]; r = await sb.from(t).insert(c); }
+        for (let i = 0; i < 3 && r.error; i++) { const k = ["uhrzeit", "ort", "faellig_ab", "bereich", "privat_fuer"].find(x => x in c && new RegExp(x, "i").test(r.error.message || "")); if (!k) break; delete c[k]; r = await sb.from(t).insert(c); }
         chk(r);
       },
       async update(t, k, patch) {
         let r = await sb.from(t).update(patch).eq(KEY[t] || "id", k);
         const c = Object.assign({}, patch);
-        for (let i = 0; i < 3 && r.error; i++) { const x = ["uhrzeit", "ort", "faellig_ab"].find(y => y in c && new RegExp(y, "i").test(r.error.message || "")); if (!x) break; delete c[x]; r = Object.keys(c).length ? await sb.from(t).update(c).eq(KEY[t] || "id", k) : { error: null }; }
+        for (let i = 0; i < 3 && r.error; i++) { const x = ["uhrzeit", "ort", "faellig_ab", "bereich", "privat_fuer"].find(y => y in c && new RegExp(y, "i").test(r.error.message || "")); if (!x) break; delete c[x]; r = Object.keys(c).length ? await sb.from(t).update(c).eq(KEY[t] || "id", k) : { error: null }; }
         chk(r);
       },
       async remove(t, k) { chk(await sb.from(t).delete().eq(KEY[t] || "id", k)); },
+      unsubscribe() { if (channel) { sb.removeChannel(channel); channel = null; } },
       subscribe(cb, onStatus) {
         if (channel) sb.removeChannel(channel);
-        channel = sb.channel("schreinerei-aufgaben");
+        channel = sb.channel(opt.channel);
         TABLES.forEach(t => channel.on("postgres_changes", { event: "*", schema: "public", table: t },
           p => cb(t, p.eventType, p.new, p.old)));
         channel.subscribe(st => onStatus && onStatus(st));
@@ -102,8 +105,8 @@
     };
   }
 
-  function demoStore() {
-    const K = "sws-aufgaben-vorschau";
+  function demoStore(K, isPriv) {
+    K = K || "sws-aufgaben-vorschau";
     let db = lsGet(K, null);
     if (!db) {
       const t = today(), ago = h => new Date(Date.now() - h * 36e5).toISOString();
@@ -131,8 +134,10 @@
     }
     const save = () => lsSet(K, db);
     const k = t => KEY[t] || "id";
+    let unlocked = !isPriv || !!lsGet(K + "-offen", false);
     return {
-      async hasSession() { return true; }, async login() { }, async logout() { },
+      async hasSession() { return unlocked; }, async login() { unlocked = true; lsSet(K + "-offen", true); }, async logout() { unlocked = !isPriv; lsSet(K + "-offen", false); },
+      async uid() { return isPriv ? "vorschau-privat" : null; }, unsubscribe() { },
       async loadAll() { return JSON.parse(JSON.stringify(db)); },
       async insert(t, row) { db[t].push(row); save(); },
       async update(t, key, patch) { const r = db[t].find(x => x[k(t)] === key); if (r) Object.assign(r, patch); save(); },
@@ -145,13 +150,20 @@
     };
   }
 
-  const store = DEMO ? demoStore() : supaStore();
+  const teamStore = DEMO ? demoStore() : supaStore();
+  // „Mein Büro“: eigener Zugang, Einträge sieht nur dieser Zugang (Datenbank-Regel privat_fuer = eigene ID)
+  const privStore = DEMO ? demoStore("sws-aufgaben-vorschau-privat", true)
+    : supaStore({ storageKey: "sws-auth-privat", email: CFG.privatEmail || "manuel.buero@schwarzwald-schreinerei.de", channel: "schreinerei-privat" });
+  let store = teamStore, privUid = null;
+  const BEREICHE = ["Aufmaß", "Produktion", "Montage", "Büro", "Sonstiges"];
+  const BER_CLS = { "Aufmaß": "b-aufmass", "Produktion": "b-prod", "Montage": "b-mont", "Büro": "b-buero", "Sonstiges": "b-sonst" };
 
   // ---------- Zustand ----------
   const S = { aufgaben: new Map(), schritte: new Map(), eintraege: new Map(), team: [] };
   let me = lsGet("sws-ich", "");
-  const ui = Object.assign({ view: "offen", person: "alle", group: "projekt", search: "", sum: null }, lsGet("sws-ansicht", {}));
-  ui.search = ""; ui.sum = null;
+  const ui = Object.assign({ view: "offen", person: "alle", bereich: "alle", group: "projekt", search: "", sum: null }, lsGet("sws-ansicht", {}));
+  ui.search = ""; ui.sum = null; ui.space = "team";
+  const inSpace = a => ui.space === "privat" ? !!a.privat_fuer : !a.privat_fuer;
   let openId = null;
 
   function setAll(d) {
@@ -253,6 +265,28 @@
   window.addEventListener("offline", () => status("Offline – Änderungen werden erst mit Verbindung gespeichert."));
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !$("mainView").hidden) reload(); });
 
+  // ---------- Team / Mein Büro ----------
+  async function switchSpace(sp) {
+    if (sp === ui.space) return;
+    if (sp === "privat" && !(await privStore.hasSession())) { openPrivLogin(); return; }
+    closeSheet(); store.unsubscribe && store.unsubscribe();
+    store = sp === "privat" ? privStore : teamStore; ui.space = sp; ui.sum = null;
+    if (sp === "privat") privUid = await privStore.uid();
+    await reload();
+    store.subscribe(applyChange, () => { });
+    render();
+  }
+  function openPrivLogin() { $("privModal").hidden = false; $("privMsg").textContent = ""; $("privCode").value = ""; setTimeout(() => $("privCode").focus(), 50); }
+  $("privCancel").onclick = () => { $("privModal").hidden = true; };
+  $("privForm").addEventListener("submit", async e => {
+    e.preventDefault(); $("privMsg").textContent = "";
+    try { await privStore.login($("privCode").value); $("privModal").hidden = true; await switchSpace("privat"); }
+    catch (err) { const wrong = err && (err.status === 400 || /invalid login/i.test(err.message || "")); $("privMsg").textContent = wrong ? "Das Passwort stimmt nicht." : "Anmelden hat nicht geklappt – Verbindung prüfen."; }
+  });
+  $("spaceTeam").onclick = () => switchSpace("team");
+  $("spacePriv").onclick = () => switchSpace("privat");
+  $("lockBtn").onclick = async () => { await switchSpace("team"); await privStore.logout(); toast("Mein Büro ist gesperrt."); };
+
   // ---------- Hauptliste ----------
   let rTimer;
   function scheduleRender() { cancelAnimationFrame(rTimer); rTimer = requestAnimationFrame(render); }
@@ -260,7 +294,9 @@
   function stepsOf(id) { return [...S.schritte.values()].filter(s => s.aufgabe_id === id).sort((a, b) => a.sortierung - b.sortierung || a.erstellt_am.localeCompare(b.erstellt_am)); }
   function logOf(id) { return [...S.eintraege.values()].filter(s => s.aufgabe_id === id).sort((a, b) => b.am.localeCompare(a.am)); }
 
+  function bereichMatch(a) { return ui.bereich === "alle" || (ui.bereich === "_ohne" ? !a.bereich : a.bereich === ui.bereich); }
   function personMatch(a) {
+    if (ui.space === "privat") return true;
     if (ui.person === "alle") return true;
     if (ui.person === "meine") return a.zustaendig === me;
     if (ui.person === "_ohne") return !a.zustaendig;
@@ -281,7 +317,7 @@
     const names = S.team.map(p => p.name);
     // Auswahllisten
     fillSelect($("addWer"), names, $("addWer").value || "");
-    const projekte = [...new Set([...S.aufgaben.values()].map(a => a.projekt).filter(Boolean))].sort((a, b) => a.localeCompare(b, "de"));
+    const projekte = [...new Set([...S.aufgaben.values()].filter(inSpace).map(a => a.projekt).filter(Boolean))].sort((a, b) => a.localeCompare(b, "de"));
     const dl = $("projektListe"); dl.innerHTML = ""; projekte.forEach(p => { const o = el("option"); o.value = p; dl.appendChild(o); });
     // Personen-Chips
     const chips = $("personChips"); chips.innerHTML = "";
@@ -289,10 +325,21 @@
       const b = el("button", "chip" + (ui.person === v ? " on" : ""), l); b.type = "button";
       b.onclick = () => { ui.person = v; saveUi(); render(); }; chips.appendChild(b);
     });
-    document.querySelectorAll(".seg button").forEach(b => b.classList.toggle("on", b.dataset.view === ui.view));
+    // Bereich-Chips
+    const bc = $("bereichChips"); bc.innerHTML = "";
+    [["alle", "Alle Bereiche"]].concat(BEREICHE.map(b => [b, b])).forEach(([v, l]) => {
+      const b = el("button", "chip" + (v !== "alle" ? " " + BER_CLS[v] : "") + (ui.bereich === v ? " on" : ""), l); b.type = "button";
+      b.onclick = () => { ui.bereich = ui.bereich === v && v !== "alle" ? "alle" : v; saveUi(); render(); }; bc.appendChild(b);
+    });
+    $("personChips").hidden = ui.space === "privat"; $("addWer").hidden = ui.space === "privat";
+    $("spaceTeam").classList.toggle("on", ui.space === "team"); $("spacePriv").classList.toggle("on", ui.space === "privat");
+    $("spaceBar").hidden = !(DEMO || me === (CFG.privatName || "Manuel"));
+    $("lockBtn").hidden = ui.space !== "privat";
+    document.body.classList.toggle("privat", ui.space === "privat");
+    document.querySelectorAll(".seg button[data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === ui.view));
     $("groupBy").value = ui.group;
 
-    const all = [...S.aufgaben.values()];
+    const all = [...S.aufgaben.values()].filter(a => inSpace(a) && bereichMatch(a));
     const open = all.filter(a => !a.erledigt && personMatch(a));
     const t = today();
     // Überblick
@@ -337,7 +384,8 @@
     if (!items.length) {
       const e = el("div", "empty");
       if (ui.view === "erledigt") { e.appendChild(el("b", "", "Noch nichts erledigt")); e.appendChild(document.createTextNode("Abgehakte Aufgaben erscheinen hier.")); }
-      else if (q || ui.sum || ui.person !== "alle") { e.appendChild(el("b", "", "Nichts gefunden")); e.appendChild(document.createTextNode("Für diesen Filter gibt es keine offenen Aufgaben.")); }
+      else if (ui.space === "privat" && !q && !ui.sum && ui.bereich === "alle") { e.appendChild(el("b", "", "Mein Büro ist leer")); e.appendChild(document.createTextNode("Hier trägst du ein, was nur du sehen sollst – z. B. Rechnungen, Angebote, Anrufe. Die Meister sehen das nicht.")); }
+      else if (q || ui.sum || ui.person !== "alle" || ui.bereich !== "alle") { e.appendChild(el("b", "", "Nichts gefunden")); e.appendChild(document.createTextNode("Für diesen Filter gibt es keine offenen Aufgaben.")); }
       else { e.appendChild(el("b", "", "Alles erledigt")); e.appendChild(document.createTextNode("Oben eintragen, was zu tun ist – mit dem Mikrofon geht's auch per Sprache.")); }
       list.appendChild(e);
     }
@@ -367,6 +415,7 @@
     const meta = el("div", "c-meta");
     if (a.erledigt) meta.appendChild(el("span", "tag ok", "✓ " + (a.erledigt_von || "") + " · " + fmtWhen(a.erledigt_am)));
     else {
+      if (a.bereich) meta.appendChild(el("span", "tag ber " + (BER_CLS[a.bereich] || ""), a.bereich));
       if (a.dringend) meta.appendChild(el("span", "tag urgent", "Dringend"));
       const due = fmtSpan(a); if (due) meta.appendChild(el("span", "tag " + due.cls, due.text + (a.uhrzeit ? ", " + a.uhrzeit + " Uhr" : "")));
       if (a.ort) meta.appendChild(el("span", "tag", "📍 " + a.ort));
@@ -405,7 +454,13 @@
   }
   function parseQuick(raw) {
     let t = " " + raw.replace(/\s+/g, " ").trim() + " ";
-    const r = { projekt: "", zustaendig: "", faellig: "", faellig_ab: "", uhrzeit: "", ort: "", dringend: false };
+    const r = { projekt: "", zustaendig: "", faellig: "", faellig_ab: "", uhrzeit: "", ort: "", bereich: "", dringend: false };
+    // Bereich aus Stichworten (Wörter bleiben in der Aufgabe stehen)
+    const low = raw.toLowerCase();
+    if (/aufma(ß|ss)|ausmessen|aufmessen|vermessen|nachmessen/.test(low)) r.bereich = "Aufmaß";
+    else if (/montier|montage|einbau|einbauen|einsetzen|\bsetzen\b|einstellen|einhängen|einhaengen|anschlagen|aufbauen|liefern|lieferung|anliefern/.test(low)) r.bereich = "Montage";
+    else if (/fertig(en|ung)|zuschneid|zuschnitt|lackier|\bölen\b|oelen|schleif|bekant|kanten|bohren|leimen|verleimen|furnier|fräsen|fraesen|hobeln|beizen|grundier|produktion|produzieren|cnc|werkstatt/.test(low)) r.bereich = "Produktion";
+    else if (/angebot|rechnung|abschlag|bestell|anrufen|telefon|e-mail|\bmail\b|nachfassen|nachkalkul|abrechn|zeichnung|zeichnen|\bplanen\b|büro|buero/.test(low)) r.bereich = "Büro";
     const cut = re => { const m = t.match(re); if (m) t = t.replace(m[0], " "); return m; };
     const PRE = "(?:\\s(?:bis|am|ab|zum|spätestens|spaetestens|bis zum|für|fuer))?";
     // dringend
@@ -499,20 +554,21 @@
     r.titel = titel || raw.trim();
     return r;
   }
-  const manual = { projekt: false, ort: false, wer: false, ab: false, faellig: false, zeit: false, dringend: false };
-  const auto = { projekt: "", ort: "", wer: "", ab: "", faellig: "", zeit: "", dringend: false };
-  [["addOrt", "ort"], ["addProjekt", "projekt"], ["addWer", "wer"], ["addAb", "ab"], ["addFaellig", "faellig"], ["addZeit", "zeit"], ["addDringend", "dringend"]].forEach(([id, k]) =>
+  const manual = { projekt: false, ort: false, wer: false, ab: false, faellig: false, zeit: false, dringend: false, bereich: false };
+  const auto = { projekt: "", ort: "", wer: "", ab: "", faellig: "", zeit: "", dringend: false, bereich: "" };
+  [["addBereich", "bereich"], ["addOrt", "ort"], ["addProjekt", "projekt"], ["addWer", "wer"], ["addAb", "ab"], ["addFaellig", "faellig"], ["addZeit", "zeit"], ["addDringend", "dringend"]].forEach(([id, k]) =>
     $(id).addEventListener("change", () => { manual[k] = true; showParse(); }));
   let parsed = null;
   function showParse() {
     const raw = $("addTitle").value, box = $("addParse");
     parsed = raw.trim() ? parseQuick(raw) : null;
     const setF = (k, id, v) => { if (manual[k]) return; const f = $(id); if (k === "dringend") { if (f.checked === auto[k]) f.checked = !!v; } else if (f.value === auto[k] || !f.value) { if (k === "wer" && v && ![...f.options].some(o => o.value === v)) { const o = el("option", "", v); o.value = v; f.appendChild(o); } f.value = v || ""; } auto[k] = k === "dringend" ? !!v : (v || ""); };
-    setF("projekt", "addProjekt", parsed && parsed.projekt); setF("ort", "addOrt", parsed && parsed.ort); setF("wer", "addWer", parsed && parsed.zustaendig);
+    setF("bereich", "addBereich", parsed && parsed.bereich); setF("projekt", "addProjekt", parsed && parsed.projekt); setF("ort", "addOrt", parsed && parsed.ort); setF("wer", "addWer", parsed && parsed.zustaendig);
     setF("ab", "addAb", parsed && parsed.faellig_ab); setF("faellig", "addFaellig", parsed && parsed.faellig); setF("zeit", "addZeit", parsed && parsed.uhrzeit); setF("dringend", "addDringend", parsed && parsed.dringend);
     box.innerHTML = "";
     if (!parsed) { box.hidden = true; return; }
     const parts = [];
+    if (parsed.bereich) parts.push(["Bereich", parsed.bereich]);
     if (parsed.projekt) parts.push(["Projekt", parsed.projekt]);
     if (parsed.ort) parts.push(["Ort", parsed.ort]);
     if (parsed.zustaendig) parts.push(["Zuständig", parsed.zustaendig]);
@@ -526,7 +582,7 @@
     parts.forEach(([k, v]) => box.appendChild(el("span", "tag" + (v === "Dringend" ? " urgent" : ""), (k ? k + ": " : "") + v)));
   }
   $("addTitle").addEventListener("input", showParse);
-  function resetQuick() { Object.keys(manual).forEach(k => manual[k] = false); auto.projekt = auto.ort = auto.wer = auto.ab = auto.faellig = auto.zeit = ""; auto.dringend = false; parsed = null; $("addParse").hidden = true; }
+  function resetQuick() { Object.keys(manual).forEach(k => manual[k] = false); auto.projekt = auto.ort = auto.wer = auto.ab = auto.faellig = auto.zeit = auto.bereich = ""; auto.dringend = false; parsed = null; $("addParse").hidden = true; }
 
   $("addForm").addEventListener("submit", e => {
     e.preventDefault();
@@ -536,12 +592,13 @@
     const ts = nowIso();
     const newId = uuid();
     mut("aufgaben", "INSERT", {
-      id: newId, titel, projekt: $("addProjekt").value.trim(), ort: $("addOrt").value.trim(), zustaendig: $("addWer").value,
+      id: newId, titel, projekt: $("addProjekt").value.trim(), ort: $("addOrt").value.trim(), bereich: $("addBereich").value,
+      privat_fuer: ui.space === "privat" ? privUid : null, zustaendig: $("addWer").value,
       faellig: $("addFaellig").value || null, faellig_ab: $("addAb").value || null, uhrzeit: $("addFaellig").value ? ($("addZeit").value || "") : "", dringend: $("addDringend").checked, notiz: "",
       erledigt: false, erledigt_am: null, erledigt_von: null, erstellt_am: ts, erstellt_von: me, geaendert_am: ts
     });
     const hadTime = $("addFaellig").value && $("addZeit").value;
-    $("addTitle").value = ""; $("addDringend").checked = false; $("addFaellig").value = ""; $("addAb").value = ""; $("addZeit").value = ""; $("addProjekt").value = ""; $("addOrt").value = ""; $("addWer").value = ""; resetQuick();
+    $("addTitle").value = ""; $("addDringend").checked = false; $("addFaellig").value = ""; $("addAb").value = ""; $("addZeit").value = ""; $("addProjekt").value = ""; $("addOrt").value = ""; $("addBereich").value = ""; $("addWer").value = ""; resetQuick();
     if (ui.view !== "offen") { ui.view = "offen"; }
     if (hadTime) toast("Termin eingetragen", "In Outlook eintragen", () => openOutlook(S.aufgaben.get(newId)));
     else toast("Aufgabe eingetragen");
@@ -576,7 +633,7 @@
     if (!a) { closeSheet(); if (!first) toast("Die Aufgabe wurde gelöscht."); return; }
     $("dCheck").className = "check big" + (a.erledigt ? " on" : "");
     setVal("dTitel", a.titel); autoGrow($("dTitel"));
-    setVal("dProjekt", a.projekt); setVal("dOrt", a.ort || ""); $("routeBtn").hidden = !a.ort; setVal("dFaellig", a.faellig || ""); setVal("dAb", a.faellig_ab || ""); setVal("dZeit", a.uhrzeit || ""); setVal("dNotiz", a.notiz);
+    setVal("dProjekt", a.projekt); setVal("dOrt", a.ort || ""); $("routeBtn").hidden = !a.ort; setVal("dFaellig", a.faellig || ""); if (document.activeElement !== $("dBereich")) $("dBereich").value = a.bereich || ""; setVal("dAb", a.faellig_ab || ""); setVal("dZeit", a.uhrzeit || ""); setVal("dNotiz", a.notiz);
     $("calRow").hidden = !(a.faellig || a.faellig_ab);
     if (document.activeElement !== $("dWer")) fillSelect($("dWer"), S.team.map(p => p.name), a.zustaendig || "");
     $("dDringend").checked = !!a.dringend;
@@ -619,6 +676,7 @@
   $("dWer").addEventListener("change", e => patchOpen({ zustaendig: e.target.value }));
   $("dFaellig").addEventListener("change", e => patchOpen({ faellig: e.target.value || null }));
   $("dAb").addEventListener("change", e => patchOpen({ faellig_ab: e.target.value || null }));
+  $("dBereich").addEventListener("change", e => patchOpen({ bereich: e.target.value }));
   $("dZeit").addEventListener("change", e => patchOpen({ uhrzeit: e.target.value || "" }));
   $("dOrt").addEventListener("change", e => patchOpen({ ort: e.target.value.trim() }));
   $("routeBtn").onclick = () => { const a = S.aufgaben.get(openId); if (a && a.ort) window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(a.ort), "_blank", "noopener"); };
@@ -704,10 +762,10 @@
   });
 
   // ---------- Filter ----------
-  document.querySelectorAll(".seg button").forEach(b => b.onclick = () => { ui.view = b.dataset.view; ui.sum = null; saveUi(); render(); });
+  document.querySelectorAll(".seg button[data-view]").forEach(b => b.onclick = () => { ui.view = b.dataset.view; ui.sum = null; saveUi(); render(); });
   $("groupBy").onchange = e => { ui.group = e.target.value; saveUi(); render(); };
   $("search").oninput = e => { ui.search = e.target.value; render(); };
-  function saveUi() { lsSet("sws-ansicht", { view: ui.view, person: ui.person, group: ui.group }); }
+  function saveUi() { lsSet("sws-ansicht", { view: ui.view, person: ui.person, bereich: ui.bereich, group: ui.group }); }
 
   // ---------- Menü ----------
   $("menuBtn").onclick = () => { $("teamEdit").hidden = true; $("homeHelp").hidden = true; $("menuModal").hidden = false; };

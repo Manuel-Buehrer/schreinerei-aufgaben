@@ -1,6 +1,6 @@
 // Service Worker: hält die App-Dateien vor, damit sie schnell startet
 // und als App auf dem Home-Bildschirm funktioniert. Daten kommen immer live aus der Datenbank.
-const CACHE = "sws-aufgaben-v11";
+const CACHE = "sws-aufgaben-v12";
 const SHELL = ["./", "index.html", "app.css", "app.js", "config.js", "logo.jpg",
   "manifest.webmanifest", "lib/supabase.js", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "favicon.png"];
 

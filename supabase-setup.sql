@@ -113,3 +113,26 @@ create policy "Team Fotos lesen"     on storage.objects for select to authentica
 create policy "Team Fotos hochladen" on storage.objects for insert to authenticated with check (bucket_id = 'aufmass-fotos');
 create policy "Team Fotos ändern"    on storage.objects for update to authenticated using (bucket_id = 'aufmass-fotos');
 create policy "Team Fotos löschen"   on storage.objects for delete to authenticated using (bucket_id = 'aufmass-fotos');
+
+-- ============ Bereiche & „Mein Büro“ (privat) ============
+alter table public.aufgaben add column if not exists bereich text not null default '';
+alter table public.aufgaben add column if not exists privat_fuer uuid;
+
+-- Aufgaben: gemeinsame für alle angemeldeten Zugänge, private nur für den eigenen Zugang
+drop policy if exists "Team darf alles" on public.aufgaben;
+drop policy if exists "Gemeinsam oder eigene" on public.aufgaben;
+create policy "Gemeinsam oder eigene" on public.aufgaben for all to authenticated
+  using (privat_fuer is null or privat_fuer = auth.uid())
+  with check (privat_fuer is null or privat_fuer = auth.uid());
+
+-- Teilschritte und Verlauf folgen der Sichtbarkeit ihrer Aufgabe
+drop policy if exists "Team darf alles" on public.schritte;
+drop policy if exists "Gemeinsam oder eigene" on public.schritte;
+create policy "Gemeinsam oder eigene" on public.schritte for all to authenticated
+  using (exists (select 1 from public.aufgaben a where a.id = aufgabe_id))
+  with check (exists (select 1 from public.aufgaben a where a.id = aufgabe_id));
+drop policy if exists "Team darf alles" on public.eintraege;
+drop policy if exists "Gemeinsam oder eigene" on public.eintraege;
+create policy "Gemeinsam oder eigene" on public.eintraege for all to authenticated
+  using (exists (select 1 from public.aufgaben a where a.id = aufgabe_id))
+  with check (exists (select 1 from public.aufgaben a where a.id = aufgabe_id));
