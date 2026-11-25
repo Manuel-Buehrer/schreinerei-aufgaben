@@ -985,7 +985,17 @@
     const base = target.value ? target.value.replace(/\s+$/, "") + " " : "";
     rec = new SR(); rec.lang = "de-DE"; rec.interimResults = true; recBtn = b; b.classList.add("rec");
     rec.onresult = ev => { let t = ""; for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript; t = t.trim(); if (t && !base) t = t[0].toUpperCase() + t.slice(1); target.value = base + t; target.dispatchEvent(new Event("input", { bubbles: true })); };
-    rec.onerror = ev => { if (ev.error === "not-allowed") toast("Mikrofon ist nicht erlaubt – in den Browser-Einstellungen freigeben."); };
+    rec.onerror = ev => {
+      const m = {
+        "not-allowed": "Mikrofon ist blockiert – beim Schloss-Symbol neben der Adresse erlauben bzw. in Windows unter Datenschutz → Mikrofon.",
+        "service-not-allowed": "Spracheingabe ist in diesem Browser gesperrt – Chrome oder Edge verwenden oder Windows-Taste + H.",
+        "audio-capture": "Kein Mikrofon gefunden – ist ein Mikrofon/Headset angeschlossen?",
+        "network": "Spracheingabe braucht Internet – Verbindung prüfen.",
+        "no-speech": "Nichts gehört – nochmal versuchen und direkt lossprechen.",
+        "language-not-supported": "Deutsch wird hier für die Spracheingabe nicht unterstützt."
+      };
+      if (ev.error !== "aborted") toast(m[ev.error] || ("Spracheingabe nicht möglich (" + ev.error + "). Tipp am PC: Windows-Taste + H."));
+    };
     rec.onend = () => { b.classList.remove("rec"); rec = null; recBtn = null; };
     try { rec.start(); } catch (x) { b.classList.remove("rec"); rec = null; }
   });

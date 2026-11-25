@@ -558,7 +558,17 @@
       txt = txt.trim(); if (txt && !recBase) txt = txt[0].toUpperCase() + txt.slice(1);
       recTarget.value = recBase + txt; if (recTarget.tagName === "TEXTAREA") autoGrow(recTarget);
     };
-    rec.onerror = ev => { if (ev.error === "not-allowed" || ev.error === "service-not-allowed") toast("Mikrofon ist nicht erlaubt – in den Browser-Einstellungen freigeben."); else if (ev.error === "no-speech") toast("Nichts gehört – nochmal versuchen."); };
+    rec.onerror = ev => {
+      const m = {
+        "not-allowed": "Mikrofon ist blockiert – beim Schloss-Symbol neben der Adresse erlauben bzw. in Windows unter Datenschutz → Mikrofon.",
+        "service-not-allowed": "Spracheingabe ist in diesem Browser gesperrt – Chrome oder Edge verwenden oder Windows-Taste + H.",
+        "audio-capture": "Kein Mikrofon gefunden – ist ein Mikrofon/Headset angeschlossen?",
+        "network": "Spracheingabe braucht Internet – Verbindung prüfen.",
+        "no-speech": "Nichts gehört – nochmal versuchen und direkt lossprechen.",
+        "language-not-supported": "Deutsch wird hier für die Spracheingabe nicht unterstützt."
+      };
+      if (ev.error !== "aborted") toast(m[ev.error] || ("Spracheingabe nicht möglich (" + ev.error + "). Tipp am PC: Windows-Taste + H."));
+    };
     rec.onend = () => {
       b.classList.remove("rec");
       const t = recTarget; rec = null; recBtn = null; recTarget = null;
