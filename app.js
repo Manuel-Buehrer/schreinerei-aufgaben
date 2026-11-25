@@ -452,6 +452,26 @@
     const d = new Date(); let diff = (wd - d.getDay() + 7) % 7; if (diff === 0 || forceNext) diff += diff === 0 ? 7 : 0; if (forceNext && diff < 7 && (wd - d.getDay() + 7) % 7 !== 0) diff += 0;
     d.setDate(d.getDate() + diff); return dayStr(d);
   }
+  // Typische Aufgaben-Wörter: hier endet ein Kundenname („Achim und Nathalie Gerber | Rechnung Fenster erstellen“)
+  const TASKWORD = /^(?:[A-ZÄÖÜa-zäöüß\-]*(?:rechnung|angebot|aufma(?:ß|ss)|fenster|tür|türe|tuer|tuere|schrank|schränke|küche|kueche|treppe|möbel|moebel|regal|tisch|bank|laden|läden|boden|böden|decke|zeichnung|bestellung|montage|lieferung|termin|leiste|leisten|platte|platten|front|fronten|beschlag|beschläge|glas|verglasung|kalkulation|reklamation|nacharbeit|material|holz|wand|verkleidung|bad|garderobe|bett|theke|tor|kostenvoranschlag|auftrag|auftragsbestätigung|abnahme|besprechung|anruf|mail|e-mail|planung|plan|pläne|muster|probe|einbau|reparatur|wartung|insektenschutz|rollladen|raffstore|jalousie|markise|parkett|dielen|sockel|sims)|Angebot|Rechnung)$/i;
+  const NAMESTOP = /^(?:der|die|das|den|dem|des|ein|eine|einen|einem|neue|neuer|neues|neuen|alte|alter|altes|bitte|noch|dann|danach|morgen|heute|mit|zum|zur|beim|im|am|an|auf|von|vom|bis|nach|ohne|wegen|alle|alles|nochmal|wieder|schnell|ich|wir|er|sie|es)$/i;
+  // Liest Namen ab dem Anfang von str: großgeschriebene Wörter, verbunden mit „und“/„&“. Stoppt an Aufgaben-Wörtern.
+  function takeName(str, allowPrefix) {
+    const toks = str.trim().split(/\s+/); const out = []; let i = 0, stopTask = false;
+    if (allowPrefix && toks[0] && /^(?:familie|fam\.|firma|fa\.|herr|frau|eheleute)$/i.test(toks[0])) out.push(toks[i++]);
+    for (; i < toks.length && out.length < 7; i++) {
+      const w = toks[i].replace(/[,.:;!]+$/, ""), punct = w !== toks[i];
+      if (/^(?:und|&|u\.)$/i.test(w) && out.length) { out.push(w); continue; }
+      if (!/^[A-ZÄÖÜ]/.test(w) || NAMESTOP.test(w)) break;
+      if (TASKWORD.test(w)) { stopTask = true; break; }
+      out.push(w);
+      if (punct) { i++; break; }
+    }
+    while (out.length && /^(?:und|&|u\.)$/i.test(out[out.length - 1])) { out.pop(); i--; }
+    const named = out.filter(w => !/^(?:und|&|u\.|familie|fam\.|firma|fa\.|herr|frau|eheleute)$/i.test(w));
+    if (!named.length) return null;
+    return { name: out.join(" "), rest: toks.slice(i).join(" ").replace(/^[,.:;]\s*/, ""), stopTask, atEnd: i >= toks.length };
+  }
   function parseQuick(raw) {
     let t = " " + raw.replace(/\s+/g, " ").trim() + " ";
     const r = { projekt: "", zustaendig: "", faellig: "", faellig_ab: "", uhrzeit: "", ort: "", bereich: "", dringend: false };
@@ -530,7 +550,11 @@
       if ((m = cut(new RegExp("(?:\\s(?:bei|für|fuer|projekt|kunde|kundin|baustelle))?\\s" + reEsc(pj) + "(?=[\\s,.:!-])", "i")))) { r.projekt = pj; break; }
     }
     if (!r.projekt && (m = t.match(/^\s*([^:]{2,40}?)\s*[:–]\s+(.+)$/))) { r.projekt = m[1].trim().replace(/^(?:bei|projekt|kunde|kundin|baustelle)\s+/i, ""); t = " " + m[2] + " "; }
-    if (!r.projekt && (m = cut(new RegExp("\\s(?:[bB]ei|[pP]rojekt|[kK]unde|[kK]undin|[bB]austelle|[fF]ür|[fF]uer)\\s((?:(?:familie|fam\\.|firma|fa\\.|herr|frau)\\s)?[A-ZÄÖÜ]" + W + "+)(?=[\\s,.:!])")))) r.projekt = m[1];
+    // Stichwort „Kunde/bei/Projekt/Baustelle/für“ + Name (auch mehrteilig: „Kunde Achim und Nathalie Gerber“)
+    if (!r.projekt && (m = t.match(/\s(?:[bB]ei|[pP]rojekt|[kK]unde|[kK]undin|[kK]unden|[bB]austelle|[fF]ür|[fF]uer)\s(.*)$/))) {
+      const nm = takeName(m[1], true);
+      if (nm) { r.projekt = nm.name; t = t.slice(0, m.index) + " " + nm.rest + " "; }
+    }
     if (!r.projekt && (m = cut(new RegExp("\\s((?:familie|fam\\.|firma|fa\\.|herr|frau)\\s[A-ZÄÖÜ]" + W + "+)(?=[\\s,.:!])", "i")))) r.projekt = m[1];
     // Aufzählung mit Kommas („Aufmaß, Haustür, Weber“): letzter Name-Teil = Kunde
     if (!r.projekt) {
@@ -539,10 +563,22 @@
     }
     // „Gerüstbau Becker, Innentüre setzen …“: Name(n) vor dem ersten Komma = Kunde
     if (!r.projekt && (m = t.match(/^\s*((?:[A-ZÄÖÜ][A-Za-zÄÖÜäöüß&.\-]*)(?:\s(?:[A-ZÄÖÜ&][A-Za-zÄÖÜäöüß&.\-]*|GmbH|KG|AG|e\.K\.)){0,3})\s*,\s*(.*[a-zäöüß].*)$/))) { r.projekt = m[1].trim(); t = " " + m[2] + " "; }
+    // Gesprochen ohne Komma, Name vorne: „Nathalie und Achim Gerber Rechnung Fenster erstellen“
+    if (!r.projekt) {
+      const nm = takeName(t, true);
+      if (nm && nm.stopTask && nm.rest) { r.projekt = nm.name; t = " " + nm.rest + " "; }
+    }
     // Gesprochen ohne Komma: „Gerüstbau Becker Innentüre setzen“ → ab 3 großgeschriebenen Wörtern am Anfang sind alle bis auf das letzte der Kunde
     if (!r.projekt && (m = t.match(/^\s*((?:[A-ZÄÖÜ][A-Za-zÄÖÜäöüß&.\-]*\s){3,5})(.*)$/))) {
       const words = m[1].trim().split(/\s+/), last = words.pop();
       if (/[a-zäöüß]/.test(m[2])) { r.projekt = words.join(" "); t = " " + last + " " + m[2] + " "; }
+    }
+    // Name hinten: „Aufmaß Haustür Weber“, „Abschlagsrechnung Gerüstbau Becker“
+    if (!r.projekt) {
+      const toks = t.trim().replace(/[,.!]+$/, "").split(/\s+/); let j = toks.length;
+      while (j > 0 && (/^(?:und|&)$/i.test(toks[j - 1]) || (/^[A-ZÄÖÜ]/.test(toks[j - 1]) && !TASKWORD.test(toks[j - 1]) && !NAMESTOP.test(toks[j - 1])))) j--;
+      while (j < toks.length && /^(?:und|&)$/i.test(toks[j])) j++;
+      if (j > 0 && j < toks.length && toks.length - j <= 5 && TASKWORD.test(toks[j - 1].replace(/[,.]$/, ""))) { r.projekt = toks.slice(j).join(" "); t = " " + toks.slice(0, j).join(" ") + " "; }
     }
     if (t.split(",").length > 2) t = t.replace(/,/g, " ");
     if (r.projekt) r.projekt = r.projekt.replace(/^fam\.\s/i, "Familie ").replace(/^(\w)/, c => c.toUpperCase());
