@@ -774,26 +774,40 @@
   $("mWho").onclick = () => { $("menuModal").hidden = true; showWho(); };
   $("mLogout").onclick = async () => { $("menuModal").hidden = true; await store.logout(); if (!DEMO) showLogin(); else toast("Im Vorschau-Modus gibt es kein Abmelden."); };
   // Mikrofon-Test: zeigt, ob der Browser Ton vom Mikrofon bekommt und welches Gerät er nimmt
-  let micStream = null, micRaf = 0;
-  function stopMicTest() { cancelAnimationFrame(micRaf); if (micStream) micStream.getTracks().forEach(t => t.stop()); micStream = null; }
-  $("mMic").onclick = async () => {
-    const box = $("micTest"); if (!box.hidden) { box.hidden = true; stopMicTest(); return; }
-    box.hidden = false; $("homeHelp").hidden = true; $("teamEdit").hidden = true; $("micDev").textContent = "Wird gestartet …";
+  let micStream = null, micRaf = 0, micCtx = null;
+  function stopMicTest() { cancelAnimationFrame(micRaf); if (micStream) micStream.getTracks().forEach(t => t.stop()); micStream = null; if (micCtx) { try { micCtx.close(); } catch (e) { } micCtx = null; } }
+  async function runMicTest(deviceId) {
+    const box = $("micTest");
+    stopMicTest(); $("micLevel").style.width = "0%";
     try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true });
       const track = micStream.getAudioTracks()[0];
-      $("micDev").textContent = "Verwendetes Mikrofon: " + (track && track.label ? track.label : "unbekannt") + (SR ? "" : " · Achtung: Dieser Browser kann keine Spracheingabe.");
-      const ctx = new (window.AudioContext || window.webkitAudioContext)(), an = ctx.createAnalyser(); an.fftSize = 512;
-      ctx.createMediaStreamSource(micStream).connect(an);
+      $("micDev").textContent = "Gerät: " + (track && track.label ? track.label : "unbekannt") + (SR ? "" : " · Achtung: Dieser Browser kann keine Spracheingabe.");
+      // Liste aller Mikrofone (Namen gibt es erst nach der Freigabe)
+      const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput");
+      const sel = $("micSel"), cur = track && track.getSettings ? track.getSettings().deviceId : "";
+      sel.innerHTML = ""; devs.forEach(d => { const o = document.createElement("option"); o.value = d.deviceId; o.textContent = d.label || "Mikrofon"; if (d.deviceId === cur) o.selected = true; sel.appendChild(o); });
+      sel.hidden = devs.length < 2;
+      micCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (micCtx.state === "suspended") await micCtx.resume();
+      const an = micCtx.createAnalyser(); an.fftSize = 512;
+      micCtx.createMediaStreamSource(micStream).connect(an);
       const buf = new Uint8Array(an.fftSize);
-      const loop = () => { an.getByteTimeDomainData(buf); let mx = 0; for (const v of buf) mx = Math.max(mx, Math.abs(v - 128)); $("micLevel").style.width = Math.min(100, mx * 1.6) + "%"; if (!box.hidden) micRaf = requestAnimationFrame(loop); else { stopMicTest(); ctx.close(); } };
+      const loop = () => { if (!micCtx) return; an.getByteTimeDomainData(buf); let mx = 0; for (const v of buf) mx = Math.max(mx, Math.abs(v - 128)); $("micLevel").style.width = Math.min(100, mx * 1.6) + "%"; if (!box.hidden) micRaf = requestAnimationFrame(loop); else stopMicTest(); };
       loop();
     } catch (err) {
       const n = err && err.name;
       $("micDev").textContent = n === "NotAllowedError" ? "Mikrofon ist für diese Seite blockiert – beim Schloss-Symbol neben der Adresse bzw. in den Windows-Datenschutzeinstellungen erlauben."
         : n === "NotFoundError" ? "Kein Mikrofon gefunden – Headset anstecken und in Windows unter Sound → Eingabe auswählen."
+        : n === "NotReadableError" ? "Das Mikrofon wird gerade von einem anderen Programm belegt (z. B. Teams, Jabra-Software) – das Programm schließen und nochmal testen."
         : "Mikrofon konnte nicht gestartet werden (" + (n || err) + ").";
     }
+  }
+  $("micSel").onchange = e => runMicTest(e.target.value);
+  $("mMic").onclick = () => {
+    const box = $("micTest"); if (!box.hidden) { box.hidden = true; stopMicTest(); return; }
+    box.hidden = false; $("homeHelp").hidden = true; $("teamEdit").hidden = true; $("micDev").textContent = "Wird gestartet …";
+    runMicTest();
   };
   $("mHome").onclick = () => { $("homeHelp").hidden = !$("homeHelp").hidden; $("teamEdit").hidden = true; };
   $("mTeam").onclick = () => { $("teamEdit").hidden = !$("teamEdit").hidden; $("homeHelp").hidden = true; renderTeam(); };
