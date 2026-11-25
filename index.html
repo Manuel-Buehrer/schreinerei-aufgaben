@@ -76,7 +76,8 @@
         <input id="addProjekt" list="projektListe" placeholder="Projekt / Kunde" aria-label="Projekt">
         <input id="addOrt" placeholder="Ort / Adresse" aria-label="Ort oder Adresse">
         <select id="addWer" aria-label="Zuständig"></select>
-        <input id="addFaellig" type="date" aria-label="Fällig am">
+        <label class="mini">Von (optional)<input id="addAb" type="date"></label>
+        <label class="mini">Fällig / bis<input id="addFaellig" type="date"></label>
         <input id="addZeit" type="time" aria-label="Uhrzeit">
         <label class="toggle"><input id="addDringend" type="checkbox"><span>Dringend</span></label>
       </div>
@@ -119,7 +120,8 @@
       <label>Projekt / Kunde<input id="dProjekt" list="projektListe"></label>
       <label>Zuständig<select id="dWer"></select></label>
       <label class="wide">Ort / Adresse<span class="with-btn"><input id="dOrt" placeholder="z. B. Musterweg 5, Freiamt"><button class="btn" type="button" id="routeBtn" hidden>Route</button></span></label>
-      <label>Fällig am<input id="dFaellig" type="date"></label>
+      <label>Von (optional)<input id="dAb" type="date"></label>
+      <label>Fällig / bis<input id="dFaellig" type="date"></label>
       <label>Uhrzeit<input id="dZeit" type="time"></label>
       <label class="toggle pad"><input id="dDringend" type="checkbox"><span>Dringend</span></label>
     </div>
@@ -181,12 +183,19 @@
       <button class="btn" type="button" id="mWho">Name wechseln</button>
       <button class="btn" type="button" id="mTeam">Team bearbeiten</button>
       <button class="btn" type="button" id="mHome">Auf den Home-Bildschirm legen</button>
+      <button class="btn" type="button" id="mMic">Mikrofon testen</button>
       <button class="btn" type="button" id="mLogout">Abmelden</button>
     </div>
     <div class="team-edit" id="teamEdit" hidden>
       <h3>Team</h3>
       <ul id="teamList"></ul>
       <form class="inline-add" id="teamForm"><input id="teamInput" placeholder="Name hinzufügen"><button class="btn" type="submit">+</button></form>
+    </div>
+    <div class="mic-test" id="micTest" hidden>
+      <h3>Mikrofon-Test</h3>
+      <p id="micDev" class="muted">Wird gestartet …</p>
+      <div class="meter"><i id="micLevel"></i></div>
+      <p class="muted">Sprich etwas – der Balken muss sich bewegen. Bewegt er sich, kommt der Ton im Browser an.</p>
     </div>
     <div class="home-help" id="homeHelp" hidden>
       <h3>Als App auf den Home-Bildschirm</h3>

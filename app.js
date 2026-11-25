@@ -25,6 +25,18 @@
   function lsGet(k, f) { try { const v = localStorage.getItem(k); return v == null ? f : JSON.parse(v); } catch (e) { return f; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* egal */ } }
 
+  function shortD(s) { const d = new Date(s + "T12:00:00"); return WD[d.getDay()] + " " + pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "."; }
+  function fmtSpan(a) {
+    const ab = a.faellig_ab, bis = a.faellig, t = today();
+    if (ab && bis && ab !== bis) {
+      const due = fmtDue(bis);
+      if (bis < t) return due;
+      if (ab <= t) return { cls: "today", text: "läuft · bis " + shortD(bis) };
+      return { cls: "", text: shortD(ab) + " – " + shortD(bis) };
+    }
+    if (ab && !bis) return { cls: ab <= t ? "today" : "", text: "ab " + shortD(ab) };
+    return fmtDue(bis);
+  }
   function fmtDue(s) {
     if (!s) return null;
     const diff = daysBetween(today(), s), d = new Date(s + "T12:00:00");
@@ -70,13 +82,13 @@
       async insert(t, row) {
         let r = await sb.from(t).insert(row);
         const c = Object.assign({}, row);
-        for (let i = 0; i < 3 && r.error; i++) { const k = ["uhrzeit", "ort"].find(x => x in c && new RegExp(x, "i").test(r.error.message || "")); if (!k) break; delete c[k]; r = await sb.from(t).insert(c); }
+        for (let i = 0; i < 3 && r.error; i++) { const k = ["uhrzeit", "ort", "faellig_ab"].find(x => x in c && new RegExp(x, "i").test(r.error.message || "")); if (!k) break; delete c[k]; r = await sb.from(t).insert(c); }
         chk(r);
       },
       async update(t, k, patch) {
         let r = await sb.from(t).update(patch).eq(KEY[t] || "id", k);
         const c = Object.assign({}, patch);
-        for (let i = 0; i < 3 && r.error; i++) { const x = ["uhrzeit", "ort"].find(y => y in c && new RegExp(y, "i").test(r.error.message || "")); if (!x) break; delete c[x]; r = Object.keys(c).length ? await sb.from(t).update(c).eq(KEY[t] || "id", k) : { error: null }; }
+        for (let i = 0; i < 3 && r.error; i++) { const x = ["uhrzeit", "ort", "faellig_ab"].find(y => y in c && new RegExp(y, "i").test(r.error.message || "")); if (!x) break; delete c[x]; r = Object.keys(c).length ? await sb.from(t).update(c).eq(KEY[t] || "id", k) : { error: null }; }
         chk(r);
       },
       async remove(t, k) { chk(await sb.from(t).delete().eq(KEY[t] || "id", k)); },
@@ -356,7 +368,7 @@
     if (a.erledigt) meta.appendChild(el("span", "tag ok", "✓ " + (a.erledigt_von || "") + " · " + fmtWhen(a.erledigt_am)));
     else {
       if (a.dringend) meta.appendChild(el("span", "tag urgent", "Dringend"));
-      const due = fmtDue(a.faellig); if (due) meta.appendChild(el("span", "tag " + due.cls, due.text + (a.uhrzeit ? ", " + a.uhrzeit + " Uhr" : "")));
+      const due = fmtSpan(a); if (due) meta.appendChild(el("span", "tag " + due.cls, due.text + (a.uhrzeit ? ", " + a.uhrzeit + " Uhr" : "")));
       if (a.ort) meta.appendChild(el("span", "tag", "📍 " + a.ort));
     }
     if (a.projekt && ui.group !== "projekt") meta.appendChild(el("span", "tag", a.projekt));
@@ -393,7 +405,7 @@
   }
   function parseQuick(raw) {
     let t = " " + raw.replace(/\s+/g, " ").trim() + " ";
-    const r = { projekt: "", zustaendig: "", faellig: "", uhrzeit: "", ort: "", dringend: false };
+    const r = { projekt: "", zustaendig: "", faellig: "", faellig_ab: "", uhrzeit: "", ort: "", dringend: false };
     const cut = re => { const m = t.match(re); if (m) t = t.replace(m[0], " "); return m; };
     const PRE = "(?:\\s(?:bis|am|ab|zum|spätestens|spaetestens|bis zum|für|fuer))?";
     // dringend
@@ -403,8 +415,32 @@
     if ((m = cut(/\s(?:um|ab|gegen)?\s?(\d{1,2})(?:[:.](\d{2}))?\s?uhr(?=[\s,.!])/i)) || (m = cut(/\s(?:um|ab|gegen)\s(\d{1,2})(?::(\d{2}))?(?=[\s,.!])/i)) || (m = cut(/\s(\d{1,2}):(\d{2})(?=[\s,.!])/))) {
       const h = Number(m[1]), mi = Number(m[2] || 0); if (h < 24 && mi < 60) r.uhrzeit = pad(h) + ":" + pad(mi);
     }
+    // Zeitraum: „vom 1.12. bis 5.12.“, „zwischen Montag und Mittwoch“, „KW 49“, „diese/nächste Woche“, „ab Montag“
+    const DTOK = "(\\d{1,2}\\.\\d{1,2}\\.?(?:\\d{2,4})?|heute|morgen|übermorgen|uebermorgen|(?:nächsten\\s|naechsten\\s|kommenden\\s)?(?:" + WDAYS.join("|") + "))";
+    const tokDate = tok => {
+      tok = tok.toLowerCase().trim(); let mm;
+      if ((mm = tok.match(/^(\d{1,2})\.(\d{1,2})\.?(\d{2,4})?$/))) { const y = mm[3] ? (mm[3].length === 2 ? 2000 + Number(mm[3]) : Number(mm[3])) : new Date().getFullYear(); let d = y + "-" + pad(Number(mm[2])) + "-" + pad(Number(mm[1])); if (!mm[3] && d < today()) d = (y + 1) + d.slice(4); return d; }
+      if (tok === "heute") return today(); if (tok === "morgen") return addDays(today(), 1); if (/^(ü|ue)bermorgen$/.test(tok)) return addDays(today(), 2);
+      const nx = /^(nächsten|naechsten|kommenden)\s/.test(tok), wd = WDAYS.indexOf(tok.replace(/^\S+\s/, nx ? "" : "$&").replace(/^(nächsten|naechsten|kommenden)\s/, ""));
+      if (wd < 0) return ""; const d = new Date(); let diff = (wd - d.getDay() + 7) % 7; if (diff === 0) diff = 7; if (nx && diff < 7) diff += 7; d.setDate(d.getDate() + diff); return dayStr(d);
+    };
+    const mondayOf = dstr => { const d = new Date(dstr + "T12:00:00"); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return dayStr(d); };
+    if ((m = cut(new RegExp("\\s(?:vom|von|zwischen)\\s" + DTOK + "\\s(?:bis(?:\\szum)?|und|-|–)\\s" + DTOK + "(?=[\\s,.])", "i"))) || (m = cut(new RegExp("\\s" + DTOK + "\\s?(?:bis|–|-)\\s?" + DTOK + "(?=[\\s,.])", "i")))) {
+      const a = tokDate(m[1]), b = tokDate(m[2]); if (a && b) { r.faellig_ab = a <= b ? a : b; r.faellig = a <= b ? b : a; }
+    } else if ((m = cut(/\s(?:in\s(?:der\s)?)?(?:kw|kalenderwoche)\s?(\d{1,2})(?=[\s,.])/i))) {
+      const kw = Number(m[1]), y = new Date().getFullYear(); const jan4 = new Date(y, 0, 4); const mon = new Date(jan4); mon.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7) + (kw - 1) * 7);
+      let ab = dayStr(mon); if (ab < mondayOf(today())) { const j = new Date(y + 1, 0, 4); const mo = new Date(j); mo.setDate(j.getDate() - ((j.getDay() + 6) % 7) + (kw - 1) * 7); ab = dayStr(mo); }
+      r.faellig_ab = ab; r.faellig = addDays(ab, 4);
+    } else if ((m = cut(new RegExp(PRE + "\\s(?:in\\s)?(?:der\\s)?(?:nächsten|naechsten|kommenden|nächste|naechste|kommende)\\s?woche(?=[\\s,.])", "i")))) {
+      const ab = addDays(mondayOf(today()), 7); r.faellig_ab = ab; r.faellig = addDays(ab, 4);
+    } else if ((m = cut(new RegExp(PRE + "\\s(?:diese|dieser)\\s?woche(?=[\\s,.])", "i")))) {
+      r.faellig_ab = today(); r.faellig = addDays(mondayOf(today()), 4) < today() ? today() : addDays(mondayOf(today()), 4);
+    } else if ((m = cut(new RegExp("\\s(?:ab|frühestens|fruehestens)\\s" + DTOK + "(?=[\\s,.])", "i")))) {
+      r.faellig_ab = tokDate(m[1]);
+    }
     // Datum
-    if ((m = cut(new RegExp(PRE + "\\s(\\d{1,2})\\.(\\d{1,2})\\.?(\\d{2,4})?(?=[\\s,.])", "i")))) {
+    if (r.faellig) { /* schon durch Zeitraum gesetzt */ }
+    else if ((m = cut(new RegExp(PRE + "\\s(\\d{1,2})\\.(\\d{1,2})\\.?(\\d{2,4})?(?=[\\s,.])", "i")))) {
       const y = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : new Date().getFullYear();
       let d = y + "-" + pad(Number(m[2])) + "-" + pad(Number(m[1])); if (!m[3] && d < today()) d = (y + 1) + d.slice(4); r.faellig = d;
     } else if ((m = cut(new RegExp(PRE + "\\s(übermorgen|uebermorgen)(?=[\\s,.])", "i")))) r.faellig = addDays(today(), 2);
@@ -463,9 +499,9 @@
     r.titel = titel || raw.trim();
     return r;
   }
-  const manual = { projekt: false, ort: false, wer: false, faellig: false, zeit: false, dringend: false };
-  const auto = { projekt: "", ort: "", wer: "", faellig: "", zeit: "", dringend: false };
-  [["addOrt", "ort"], ["addProjekt", "projekt"], ["addWer", "wer"], ["addFaellig", "faellig"], ["addZeit", "zeit"], ["addDringend", "dringend"]].forEach(([id, k]) =>
+  const manual = { projekt: false, ort: false, wer: false, ab: false, faellig: false, zeit: false, dringend: false };
+  const auto = { projekt: "", ort: "", wer: "", ab: "", faellig: "", zeit: "", dringend: false };
+  [["addOrt", "ort"], ["addProjekt", "projekt"], ["addWer", "wer"], ["addAb", "ab"], ["addFaellig", "faellig"], ["addZeit", "zeit"], ["addDringend", "dringend"]].forEach(([id, k]) =>
     $(id).addEventListener("change", () => { manual[k] = true; showParse(); }));
   let parsed = null;
   function showParse() {
@@ -473,14 +509,15 @@
     parsed = raw.trim() ? parseQuick(raw) : null;
     const setF = (k, id, v) => { if (manual[k]) return; const f = $(id); if (k === "dringend") { if (f.checked === auto[k]) f.checked = !!v; } else if (f.value === auto[k] || !f.value) { if (k === "wer" && v && ![...f.options].some(o => o.value === v)) { const o = el("option", "", v); o.value = v; f.appendChild(o); } f.value = v || ""; } auto[k] = k === "dringend" ? !!v : (v || ""); };
     setF("projekt", "addProjekt", parsed && parsed.projekt); setF("ort", "addOrt", parsed && parsed.ort); setF("wer", "addWer", parsed && parsed.zustaendig);
-    setF("faellig", "addFaellig", parsed && parsed.faellig); setF("zeit", "addZeit", parsed && parsed.uhrzeit); setF("dringend", "addDringend", parsed && parsed.dringend);
+    setF("ab", "addAb", parsed && parsed.faellig_ab); setF("faellig", "addFaellig", parsed && parsed.faellig); setF("zeit", "addZeit", parsed && parsed.uhrzeit); setF("dringend", "addDringend", parsed && parsed.dringend);
     box.innerHTML = "";
     if (!parsed) { box.hidden = true; return; }
     const parts = [];
     if (parsed.projekt) parts.push(["Projekt", parsed.projekt]);
     if (parsed.ort) parts.push(["Ort", parsed.ort]);
     if (parsed.zustaendig) parts.push(["Zuständig", parsed.zustaendig]);
-    if (parsed.faellig) { const f = fmtDue(parsed.faellig); parts.push(["Fällig", (f ? f.text : parsed.faellig) + (parsed.uhrzeit ? ", " + parsed.uhrzeit + " Uhr" : "")]); }
+    if (parsed.faellig_ab) { const f = fmtSpan({ faellig_ab: parsed.faellig_ab, faellig: parsed.faellig }); parts.push(["Zeitraum", f ? f.text : parsed.faellig_ab]); }
+    else if (parsed.faellig) { const f = fmtDue(parsed.faellig); parts.push(["Fällig", (f ? f.text : parsed.faellig) + (parsed.uhrzeit ? ", " + parsed.uhrzeit + " Uhr" : "")]); }
     if (parsed.dringend) parts.push(["", "Dringend"]);
     box.hidden = !parts.length;
     if (!parts.length) return;
@@ -489,7 +526,7 @@
     parts.forEach(([k, v]) => box.appendChild(el("span", "tag" + (v === "Dringend" ? " urgent" : ""), (k ? k + ": " : "") + v)));
   }
   $("addTitle").addEventListener("input", showParse);
-  function resetQuick() { Object.keys(manual).forEach(k => manual[k] = false); auto.projekt = auto.ort = auto.wer = auto.faellig = auto.zeit = ""; auto.dringend = false; parsed = null; $("addParse").hidden = true; }
+  function resetQuick() { Object.keys(manual).forEach(k => manual[k] = false); auto.projekt = auto.ort = auto.wer = auto.ab = auto.faellig = auto.zeit = ""; auto.dringend = false; parsed = null; $("addParse").hidden = true; }
 
   $("addForm").addEventListener("submit", e => {
     e.preventDefault();
@@ -500,11 +537,11 @@
     const newId = uuid();
     mut("aufgaben", "INSERT", {
       id: newId, titel, projekt: $("addProjekt").value.trim(), ort: $("addOrt").value.trim(), zustaendig: $("addWer").value,
-      faellig: $("addFaellig").value || null, uhrzeit: $("addFaellig").value ? ($("addZeit").value || "") : "", dringend: $("addDringend").checked, notiz: "",
+      faellig: $("addFaellig").value || null, faellig_ab: $("addAb").value || null, uhrzeit: $("addFaellig").value ? ($("addZeit").value || "") : "", dringend: $("addDringend").checked, notiz: "",
       erledigt: false, erledigt_am: null, erledigt_von: null, erstellt_am: ts, erstellt_von: me, geaendert_am: ts
     });
     const hadTime = $("addFaellig").value && $("addZeit").value;
-    $("addTitle").value = ""; $("addDringend").checked = false; $("addFaellig").value = ""; $("addZeit").value = ""; $("addProjekt").value = ""; $("addOrt").value = ""; $("addWer").value = ""; resetQuick();
+    $("addTitle").value = ""; $("addDringend").checked = false; $("addFaellig").value = ""; $("addAb").value = ""; $("addZeit").value = ""; $("addProjekt").value = ""; $("addOrt").value = ""; $("addWer").value = ""; resetQuick();
     if (ui.view !== "offen") { ui.view = "offen"; }
     if (hadTime) toast("Termin eingetragen", "In Outlook eintragen", () => openOutlook(S.aufgaben.get(newId)));
     else toast("Aufgabe eingetragen");
@@ -539,8 +576,8 @@
     if (!a) { closeSheet(); if (!first) toast("Die Aufgabe wurde gelöscht."); return; }
     $("dCheck").className = "check big" + (a.erledigt ? " on" : "");
     setVal("dTitel", a.titel); autoGrow($("dTitel"));
-    setVal("dProjekt", a.projekt); setVal("dOrt", a.ort || ""); $("routeBtn").hidden = !a.ort; setVal("dFaellig", a.faellig || ""); setVal("dZeit", a.uhrzeit || ""); setVal("dNotiz", a.notiz);
-    $("calRow").hidden = !a.faellig;
+    setVal("dProjekt", a.projekt); setVal("dOrt", a.ort || ""); $("routeBtn").hidden = !a.ort; setVal("dFaellig", a.faellig || ""); setVal("dAb", a.faellig_ab || ""); setVal("dZeit", a.uhrzeit || ""); setVal("dNotiz", a.notiz);
+    $("calRow").hidden = !(a.faellig || a.faellig_ab);
     if (document.activeElement !== $("dWer")) fillSelect($("dWer"), S.team.map(p => p.name), a.zustaendig || "");
     $("dDringend").checked = !!a.dringend;
     $("dDone").hidden = !a.erledigt;
@@ -581,34 +618,35 @@
   $("dProjekt").addEventListener("change", e => patchOpen({ projekt: e.target.value.trim() }));
   $("dWer").addEventListener("change", e => patchOpen({ zustaendig: e.target.value }));
   $("dFaellig").addEventListener("change", e => patchOpen({ faellig: e.target.value || null }));
+  $("dAb").addEventListener("change", e => patchOpen({ faellig_ab: e.target.value || null }));
   $("dZeit").addEventListener("change", e => patchOpen({ uhrzeit: e.target.value || "" }));
   $("dOrt").addEventListener("change", e => patchOpen({ ort: e.target.value.trim() }));
   $("routeBtn").onclick = () => { const a = S.aufgaben.get(openId); if (a && a.ort) window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(a.ort), "_blank", "noopener"); };
 
   // ---------- Kalender (Outlook / .ics) ----------
   function calTimes(a) {
-    if (!a.uhrzeit) return { allDay: true, start: new Date(a.faellig + "T00:00:00"), end: new Date(addDays(a.faellig, 1) + "T00:00:00") };
+    if (!a.uhrzeit || (a.faellig_ab && a.faellig_ab !== a.faellig)) { const s0 = a.faellig_ab || a.faellig, e0 = a.faellig || a.faellig_ab; return { allDay: true, s0, e0, start: new Date(s0 + "T00:00:00"), end: new Date(addDays(e0, 1) + "T00:00:00") }; }
     const st = new Date(a.faellig + "T" + a.uhrzeit + ":00"); return { allDay: false, start: st, end: new Date(st.getTime() + 60 * 60000) };
   }
   function localIso(d) { const o = -d.getTimezoneOffset(), sg = o >= 0 ? "+" : "-"; return dayStr(d) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":00" + sg + pad(Math.floor(Math.abs(o) / 60)) + ":" + pad(Math.abs(o) % 60); }
   const calSubject = a => a.titel + (a.projekt ? " – " + a.projekt : "") + (a.zustaendig ? " (" + a.zustaendig + ")" : "");
   const calBody = a => [a.zustaendig ? "Zuständig: " + a.zustaendig : "", a.notiz || "", "Aus der Aufgaben-App der Schwarzwald Schreinerei"].filter(Boolean).join("\n");
   function openOutlook(a) {
-    if (!a || !a.faellig) return;
+    if (!a || !(a.faellig || a.faellig_ab)) return;
     const t = calTimes(a), q = new URLSearchParams({ path: "/calendar/action/compose", rru: "addevent", subject: calSubject(a), body: calBody(a),
-      startdt: t.allDay ? a.faellig : localIso(t.start), enddt: t.allDay ? addDays(a.faellig, 1) : localIso(t.end) });
+      startdt: t.allDay ? t.s0 : localIso(t.start), enddt: t.allDay ? addDays(t.e0, 1) : localIso(t.end) });
     if (t.allDay) q.set("allday", "true");
     if (a.ort || a.projekt) q.set("location", a.ort || a.projekt);
     window.open("https://outlook.office.com/calendar/0/deeplink/compose?" + q.toString(), "_blank", "noopener");
   }
   function downloadIcs(a) {
-    if (!a || !a.faellig) return;
+    if (!a || !(a.faellig || a.faellig_ab)) return;
     const t = calTimes(a), utc = d => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
     const escI = x => String(x || "").replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
     const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Schwarzwald Schreinerei//Aufgaben//DE", "CALSCALE:GREGORIAN", "BEGIN:VEVENT",
       "UID:" + a.id + "@schwarzwald-schreinerei", "DTSTAMP:" + utc(new Date()),
-      t.allDay ? "DTSTART;VALUE=DATE:" + a.faellig.replace(/-/g, "") : "DTSTART:" + utc(t.start),
-      t.allDay ? "DTEND;VALUE=DATE:" + addDays(a.faellig, 1).replace(/-/g, "") : "DTEND:" + utc(t.end),
+      t.allDay ? "DTSTART;VALUE=DATE:" + t.s0.replace(/-/g, "") : "DTSTART:" + utc(t.start),
+      t.allDay ? "DTEND;VALUE=DATE:" + addDays(t.e0, 1).replace(/-/g, "") : "DTEND:" + utc(t.end),
       "SUMMARY:" + escI(calSubject(a)), "DESCRIPTION:" + escI(calBody(a))];
     if (a.ort || a.projekt) lines.push("LOCATION:" + escI(a.ort || a.projekt));
     lines.push("END:VEVENT", "END:VCALENDAR");
@@ -674,9 +712,31 @@
   // ---------- Menü ----------
   $("menuBtn").onclick = () => { $("teamEdit").hidden = true; $("homeHelp").hidden = true; $("menuModal").hidden = false; };
   $("meBtn").onclick = () => showWho();
-  $("menuClose").onclick = () => $("menuModal").hidden = true;
+  $("menuClose").onclick = () => { $("menuModal").hidden = true; $("micTest").hidden = true; stopMicTest(); };
   $("mWho").onclick = () => { $("menuModal").hidden = true; showWho(); };
   $("mLogout").onclick = async () => { $("menuModal").hidden = true; await store.logout(); if (!DEMO) showLogin(); else toast("Im Vorschau-Modus gibt es kein Abmelden."); };
+  // Mikrofon-Test: zeigt, ob der Browser Ton vom Mikrofon bekommt und welches Gerät er nimmt
+  let micStream = null, micRaf = 0;
+  function stopMicTest() { cancelAnimationFrame(micRaf); if (micStream) micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  $("mMic").onclick = async () => {
+    const box = $("micTest"); if (!box.hidden) { box.hidden = true; stopMicTest(); return; }
+    box.hidden = false; $("homeHelp").hidden = true; $("teamEdit").hidden = true; $("micDev").textContent = "Wird gestartet …";
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const track = micStream.getAudioTracks()[0];
+      $("micDev").textContent = "Verwendetes Mikrofon: " + (track && track.label ? track.label : "unbekannt") + (SR ? "" : " · Achtung: Dieser Browser kann keine Spracheingabe.");
+      const ctx = new (window.AudioContext || window.webkitAudioContext)(), an = ctx.createAnalyser(); an.fftSize = 512;
+      ctx.createMediaStreamSource(micStream).connect(an);
+      const buf = new Uint8Array(an.fftSize);
+      const loop = () => { an.getByteTimeDomainData(buf); let mx = 0; for (const v of buf) mx = Math.max(mx, Math.abs(v - 128)); $("micLevel").style.width = Math.min(100, mx * 1.6) + "%"; if (!box.hidden) micRaf = requestAnimationFrame(loop); else { stopMicTest(); ctx.close(); } };
+      loop();
+    } catch (err) {
+      const n = err && err.name;
+      $("micDev").textContent = n === "NotAllowedError" ? "Mikrofon ist für diese Seite blockiert – beim Schloss-Symbol neben der Adresse bzw. in den Windows-Datenschutzeinstellungen erlauben."
+        : n === "NotFoundError" ? "Kein Mikrofon gefunden – Headset anstecken und in Windows unter Sound → Eingabe auswählen."
+        : "Mikrofon konnte nicht gestartet werden (" + (n || err) + ").";
+    }
+  };
   $("mHome").onclick = () => { $("homeHelp").hidden = !$("homeHelp").hidden; $("teamEdit").hidden = true; };
   $("mTeam").onclick = () => { $("teamEdit").hidden = !$("teamEdit").hidden; $("homeHelp").hidden = true; renderTeam(); };
   function renderTeam() {

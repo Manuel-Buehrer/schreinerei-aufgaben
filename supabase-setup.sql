@@ -28,6 +28,7 @@ create table if not exists public.eintraege (
 -- Uhrzeit für Termine (Outlook)
 alter table public.aufgaben add column if not exists uhrzeit text not null default '';
 alter table public.aufgaben add column if not exists ort text not null default '';
+alter table public.aufgaben add column if not exists faellig_ab date;
 
 create index if not exists eintraege_aufgabe_idx on public.eintraege (aufgabe_id);
 

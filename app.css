@@ -90,7 +90,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .add-row{display:flex;gap:8px}
 .add-row input{flex:1;min-width:0;font-size:18px;padding:12px 14px;border:1.5px solid var(--line2);border-radius:10px;background:var(--card)}
 .add-row input:focus{border-color:var(--red);outline:none}
-.add-more{display:grid;grid-template-columns:1.6fr 1.4fr 1fr 1fr 100px auto;gap:8px}
+.add-more{display:grid;grid-template-columns:1.5fr 1.3fr 1fr 1fr 1fr 96px auto;gap:8px}
 .add-more input,.add-more select{min-width:0;padding:9px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--card2)}
 .add-go .short{display:none}
 @media (max-width:760px){.add-go .short{display:inline}}
@@ -244,3 +244,11 @@ button,input,select,textarea{font:inherit;color:inherit}
 .listen .btn{background:transparent;color:var(--cream);border-color:#5A5752}
 .listen .btn.primary{background:var(--red);border-color:var(--red)}
 @media (prefers-reduced-motion:reduce){.listen-dot{animation:none}}
+
+.add-more{align-items:end}
+.add-more .mini{display:flex;flex-direction:column;gap:2px;font-size:11px;font-weight:600;color:var(--muted);min-width:0}
+.add-more .mini input{width:100%;min-width:0;padding:9px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--card2)}
+
+.mic-test{display:flex;flex-direction:column;gap:8px}
+.meter{height:14px;border-radius:7px;background:var(--chip);overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--ok);transition:width .08s}
