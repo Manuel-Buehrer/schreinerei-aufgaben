@@ -333,7 +333,7 @@
     });
     $("personChips").hidden = ui.space === "privat"; $("addWer").hidden = ui.space === "privat";
     $("spaceTeam").classList.toggle("on", ui.space === "team"); $("spacePriv").classList.toggle("on", ui.space === "privat");
-    $("spaceBar").hidden = !(DEMO || me === (CFG.privatName || "Manuel"));
+    $("spaceBar").hidden = !(DEMO || (CFG.privatNamen || [CFG.privatName || "Manuel"]).includes(me));
     $("lockBtn").hidden = ui.space !== "privat";
     document.body.classList.toggle("privat", ui.space === "privat");
     document.querySelectorAll(".seg button[data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === ui.view));
@@ -384,7 +384,7 @@
     if (!items.length) {
       const e = el("div", "empty");
       if (ui.view === "erledigt") { e.appendChild(el("b", "", "Noch nichts erledigt")); e.appendChild(document.createTextNode("Abgehakte Aufgaben erscheinen hier.")); }
-      else if (ui.space === "privat" && !q && !ui.sum && ui.bereich === "alle") { e.appendChild(el("b", "", "Mein Büro ist leer")); e.appendChild(document.createTextNode("Hier trägst du ein, was nur du sehen sollst – z. B. Rechnungen, Angebote, Anrufe. Die Meister sehen das nicht.")); }
+      else if (ui.space === "privat" && !q && !ui.sum && ui.bereich === "alle") { e.appendChild(el("b", "", "Mein Büro ist leer")); e.appendChild(document.createTextNode("Hier tragt ihr ein, was nur das Büro sehen soll – z. B. Rechnungen, Angebote, Anrufe. Die Meister sehen das nicht.")); }
       else if (q || ui.sum || ui.person !== "alle" || ui.bereich !== "alle") { e.appendChild(el("b", "", "Nichts gefunden")); e.appendChild(document.createTextNode("Für diesen Filter gibt es keine offenen Aufgaben.")); }
       else { e.appendChild(el("b", "", "Alles erledigt")); e.appendChild(document.createTextNode("Oben eintragen, was zu tun ist – mit dem Mikrofon geht's auch per Sprache.")); }
       list.appendChild(e);

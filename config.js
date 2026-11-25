@@ -6,7 +6,7 @@ window.SWS_CONFIG = {
   supabaseUrl: "https://vjaqrlifarefkjilwtnl.supabase.co",
   supabaseKey: "sb_publishable_eRXoTnaaglAddWCKvqDizw_RDZ8f-SX",
   teamEmail: "team@schwarzwald-schreinerei.de",
-  // „Mein Büro“ (privat): eigener Zugang in Supabase, nur Manuel kennt das Passwort
+  // „Mein Büro“ (privat): eigener Zugang in Supabase, nur Manuel und Jessi kennen das Passwort
   privatEmail: "manuel.buero@schwarzwald-schreinerei.de",
-  privatName: "Manuel"
+  privatNamen: ["Manuel", "Jessi"]
 };

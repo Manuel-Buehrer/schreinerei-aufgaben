@@ -48,7 +48,7 @@ create table if not exists public.team (
   name text primary key,
   sortierung int not null default 0
 );
-insert into public.team (name, sortierung) values ('Manuel', 1), ('Marco', 2), ('Simon', 3)
+insert into public.team (name, sortierung) values ('Manuel', 1), ('Marco', 2), ('Simon', 3), ('Jessi', 4)
   on conflict (name) do nothing;
 
 -- Zugriff nur für angemeldete Nutzer (Team-Code)

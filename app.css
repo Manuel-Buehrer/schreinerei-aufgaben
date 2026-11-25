@@ -267,6 +267,6 @@ button,input,select,textarea{font:inherit;color:inherit}
 .seg.space button{font-size:15px;padding:9px 18px}
 body.privat .top{border-bottom-color:#6A4C93}
 body.privat .summary .sum{outline-color:#6A4C93}
-body.privat .space-bar::after{content:"Nur für dich sichtbar";font-size:12px;font-weight:700;color:#6A4C93;background:color-mix(in srgb,#6A4C93 14%,transparent);border-radius:8px;padding:4px 10px}
+body.privat .space-bar::after{content:"Nur fürs Büro sichtbar";font-size:12px;font-weight:700;color:#6A4C93;background:color-mix(in srgb,#6A4C93 14%,transparent);border-radius:8px;padding:4px 10px}
 .add-more .toggle input{width:20px;height:20px;flex:none;padding:0;min-width:20px}
 .add-more .toggle{white-space:nowrap}
