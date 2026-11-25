@@ -69,12 +69,14 @@
       },
       async insert(t, row) {
         let r = await sb.from(t).insert(row);
-        if (r.error && "uhrzeit" in row && /uhrzeit/i.test(r.error.message || "")) { const c = Object.assign({}, row); delete c.uhrzeit; r = await sb.from(t).insert(c); }
+        const c = Object.assign({}, row);
+        for (let i = 0; i < 3 && r.error; i++) { const k = ["uhrzeit", "ort"].find(x => x in c && new RegExp(x, "i").test(r.error.message || "")); if (!k) break; delete c[k]; r = await sb.from(t).insert(c); }
         chk(r);
       },
       async update(t, k, patch) {
         let r = await sb.from(t).update(patch).eq(KEY[t] || "id", k);
-        if (r.error && "uhrzeit" in patch && /uhrzeit/i.test(r.error.message || "")) { const c = Object.assign({}, patch); delete c.uhrzeit; if (Object.keys(c).length) r = await sb.from(t).update(c).eq(KEY[t] || "id", k); else r = { error: null }; }
+        const c = Object.assign({}, patch);
+        for (let i = 0; i < 3 && r.error; i++) { const x = ["uhrzeit", "ort"].find(y => y in c && new RegExp(y, "i").test(r.error.message || "")); if (!x) break; delete c[x]; r = Object.keys(c).length ? await sb.from(t).update(c).eq(KEY[t] || "id", k) : { error: null }; }
         chk(r);
       },
       async remove(t, k) { chk(await sb.from(t).delete().eq(KEY[t] || "id", k)); },
@@ -296,7 +298,7 @@
     // Liste
     const q = ui.search.trim().toLowerCase();
     let items = all.filter(a => (ui.view === "erledigt" ? a.erledigt : !a.erledigt) && personMatch(a) && (ui.view === "erledigt" || sumMatch(a)) &&
-      (!q || (a.titel + " " + a.projekt + " " + a.notiz + " " + a.zustaendig).toLowerCase().includes(q)));
+      (!q || (a.titel + " " + a.projekt + " " + (a.ort || "") + " " + a.notiz + " " + a.zustaendig).toLowerCase().includes(q)));
     if (ui.view === "offen") items.sort((a, b) => (b.dringend - a.dringend) || ((a.faellig || "9999") .localeCompare(b.faellig || "9999")) || b.erstellt_am.localeCompare(a.erstellt_am));
     else items = items.sort((a, b) => (b.erledigt_am || "").localeCompare(a.erledigt_am || "")).slice(0, 300);
 
@@ -355,6 +357,7 @@
     else {
       if (a.dringend) meta.appendChild(el("span", "tag urgent", "Dringend"));
       const due = fmtDue(a.faellig); if (due) meta.appendChild(el("span", "tag " + due.cls, due.text + (a.uhrzeit ? ", " + a.uhrzeit + " Uhr" : "")));
+      if (a.ort) meta.appendChild(el("span", "tag", "📍 " + a.ort));
     }
     if (a.projekt && ui.group !== "projekt") meta.appendChild(el("span", "tag", a.projekt));
     if (a.zustaendig && ui.group !== "person") { const w = el("span", "tag who"); w.appendChild(el("span", "av", initials(a.zustaendig))); w.appendChild(document.createTextNode(a.zustaendig)); meta.appendChild(w); }
@@ -390,7 +393,7 @@
   }
   function parseQuick(raw) {
     let t = " " + raw.replace(/\s+/g, " ").trim() + " ";
-    const r = { projekt: "", zustaendig: "", faellig: "", uhrzeit: "", dringend: false };
+    const r = { projekt: "", zustaendig: "", faellig: "", uhrzeit: "", ort: "", dringend: false };
     const cut = re => { const m = t.match(re); if (m) t = t.replace(m[0], " "); return m; };
     const PRE = "(?:\\s(?:bis|am|ab|zum|spätestens|spaetestens|bis zum|für|fuer))?";
     // dringend
@@ -413,6 +416,11 @@
     else if ((m = cut(new RegExp(PRE + "\\s(?:(nächsten|naechsten|kommenden)\\s)?(" + WDAYS.join("|") + ")(?=[\\s,.])", "i")))) {
       const wd = WDAYS.indexOf(m[2].toLowerCase()); const d = new Date(); let diff = (wd - d.getDay() + 7) % 7; if (diff === 0) diff = 7; if (m[1] && diff < 7) diff += 7; d.setDate(d.getDate() + diff); r.faellig = dayStr(d);
     }
+    // Ort: Straße + Hausnummer (+ Ort) oder „in/Ort/Adresse X“
+    const STR = "[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\\-]*(?:straße|strasse|str\\.|weg|gasse|platz|ring|allee|steig|halde|matte|hof)";
+    if ((m = cut(new RegExp("(?:\\s(?:in der|in|an der|ort|adresse))?\\s(" + STR + "\\s\\d+\\s?[a-zA-Z]?(?:,?\\s(?:\\d{5}\\s)?[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\\-]+)?)(?=[\\s,.!])")))) r.ort = m[1].replace(/\s+/g, " ").trim();
+    else if ((m = cut(/\s(?:[oO]rt|[aA]dresse)\s([A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+(?:\s[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+)?)(?=[\s,.!])/))) r.ort = m[1];
+    else if ((m = cut(/\s(?:in|nach)\s((?:der|dem)\s)?([A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+(?:\s(?:im|am|an der)\s[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+)?)(?=[\s,.!])/))) r.ort = m[2];
     if (r.uhrzeit && !r.faellig) { const n = new Date(); r.faellig = (pad(n.getHours()) + ":" + pad(n.getMinutes())) < r.uhrzeit ? today() : addDays(today(), 1); }
     // Person (aus dem Team)
     if ((m = cut(/\s(?:für|fuer)\s(?:mich|mir)(?=[\s,.])/i))) r.zustaendig = me;
@@ -442,21 +450,22 @@
     r.titel = titel || raw.trim();
     return r;
   }
-  const manual = { projekt: false, wer: false, faellig: false, zeit: false, dringend: false };
-  const auto = { projekt: "", wer: "", faellig: "", zeit: "", dringend: false };
-  [["addProjekt", "projekt"], ["addWer", "wer"], ["addFaellig", "faellig"], ["addZeit", "zeit"], ["addDringend", "dringend"]].forEach(([id, k]) =>
+  const manual = { projekt: false, ort: false, wer: false, faellig: false, zeit: false, dringend: false };
+  const auto = { projekt: "", ort: "", wer: "", faellig: "", zeit: "", dringend: false };
+  [["addOrt", "ort"], ["addProjekt", "projekt"], ["addWer", "wer"], ["addFaellig", "faellig"], ["addZeit", "zeit"], ["addDringend", "dringend"]].forEach(([id, k]) =>
     $(id).addEventListener("change", () => { manual[k] = true; showParse(); }));
   let parsed = null;
   function showParse() {
     const raw = $("addTitle").value, box = $("addParse");
     parsed = raw.trim() ? parseQuick(raw) : null;
     const setF = (k, id, v) => { if (manual[k]) return; const f = $(id); if (k === "dringend") { if (f.checked === auto[k]) f.checked = !!v; } else if (f.value === auto[k] || !f.value) { if (k === "wer" && v && ![...f.options].some(o => o.value === v)) { const o = el("option", "", v); o.value = v; f.appendChild(o); } f.value = v || ""; } auto[k] = k === "dringend" ? !!v : (v || ""); };
-    setF("projekt", "addProjekt", parsed && parsed.projekt); setF("wer", "addWer", parsed && parsed.zustaendig);
+    setF("projekt", "addProjekt", parsed && parsed.projekt); setF("ort", "addOrt", parsed && parsed.ort); setF("wer", "addWer", parsed && parsed.zustaendig);
     setF("faellig", "addFaellig", parsed && parsed.faellig); setF("zeit", "addZeit", parsed && parsed.uhrzeit); setF("dringend", "addDringend", parsed && parsed.dringend);
     box.innerHTML = "";
     if (!parsed) { box.hidden = true; return; }
     const parts = [];
     if (parsed.projekt) parts.push(["Projekt", parsed.projekt]);
+    if (parsed.ort) parts.push(["Ort", parsed.ort]);
     if (parsed.zustaendig) parts.push(["Zuständig", parsed.zustaendig]);
     if (parsed.faellig) { const f = fmtDue(parsed.faellig); parts.push(["Fällig", (f ? f.text : parsed.faellig) + (parsed.uhrzeit ? ", " + parsed.uhrzeit + " Uhr" : "")]); }
     if (parsed.dringend) parts.push(["", "Dringend"]);
@@ -467,7 +476,7 @@
     parts.forEach(([k, v]) => box.appendChild(el("span", "tag" + (v === "Dringend" ? " urgent" : ""), (k ? k + ": " : "") + v)));
   }
   $("addTitle").addEventListener("input", showParse);
-  function resetQuick() { Object.keys(manual).forEach(k => manual[k] = false); auto.projekt = auto.wer = auto.faellig = auto.zeit = ""; auto.dringend = false; parsed = null; $("addParse").hidden = true; }
+  function resetQuick() { Object.keys(manual).forEach(k => manual[k] = false); auto.projekt = auto.ort = auto.wer = auto.faellig = auto.zeit = ""; auto.dringend = false; parsed = null; $("addParse").hidden = true; }
 
   $("addForm").addEventListener("submit", e => {
     e.preventDefault();
@@ -477,12 +486,12 @@
     const ts = nowIso();
     const newId = uuid();
     mut("aufgaben", "INSERT", {
-      id: newId, titel, projekt: $("addProjekt").value.trim(), zustaendig: $("addWer").value,
+      id: newId, titel, projekt: $("addProjekt").value.trim(), ort: $("addOrt").value.trim(), zustaendig: $("addWer").value,
       faellig: $("addFaellig").value || null, uhrzeit: $("addFaellig").value ? ($("addZeit").value || "") : "", dringend: $("addDringend").checked, notiz: "",
       erledigt: false, erledigt_am: null, erledigt_von: null, erstellt_am: ts, erstellt_von: me, geaendert_am: ts
     });
     const hadTime = $("addFaellig").value && $("addZeit").value;
-    $("addTitle").value = ""; $("addDringend").checked = false; $("addFaellig").value = ""; $("addZeit").value = ""; $("addProjekt").value = ""; $("addWer").value = ""; resetQuick();
+    $("addTitle").value = ""; $("addDringend").checked = false; $("addFaellig").value = ""; $("addZeit").value = ""; $("addProjekt").value = ""; $("addOrt").value = ""; $("addWer").value = ""; resetQuick();
     if (ui.view !== "offen") { ui.view = "offen"; }
     if (hadTime) toast("Termin eingetragen", "In Outlook eintragen", () => openOutlook(S.aufgaben.get(newId)));
     else toast("Aufgabe eingetragen");
@@ -517,7 +526,7 @@
     if (!a) { closeSheet(); if (!first) toast("Die Aufgabe wurde gelöscht."); return; }
     $("dCheck").className = "check big" + (a.erledigt ? " on" : "");
     setVal("dTitel", a.titel); autoGrow($("dTitel"));
-    setVal("dProjekt", a.projekt); setVal("dFaellig", a.faellig || ""); setVal("dZeit", a.uhrzeit || ""); setVal("dNotiz", a.notiz);
+    setVal("dProjekt", a.projekt); setVal("dOrt", a.ort || ""); $("routeBtn").hidden = !a.ort; setVal("dFaellig", a.faellig || ""); setVal("dZeit", a.uhrzeit || ""); setVal("dNotiz", a.notiz);
     $("calRow").hidden = !a.faellig;
     if (document.activeElement !== $("dWer")) fillSelect($("dWer"), S.team.map(p => p.name), a.zustaendig || "");
     $("dDringend").checked = !!a.dringend;
@@ -560,6 +569,8 @@
   $("dWer").addEventListener("change", e => patchOpen({ zustaendig: e.target.value }));
   $("dFaellig").addEventListener("change", e => patchOpen({ faellig: e.target.value || null }));
   $("dZeit").addEventListener("change", e => patchOpen({ uhrzeit: e.target.value || "" }));
+  $("dOrt").addEventListener("change", e => patchOpen({ ort: e.target.value.trim() }));
+  $("routeBtn").onclick = () => { const a = S.aufgaben.get(openId); if (a && a.ort) window.open("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(a.ort), "_blank", "noopener"); };
 
   // ---------- Kalender (Outlook / .ics) ----------
   function calTimes(a) {
@@ -574,7 +585,7 @@
     const t = calTimes(a), q = new URLSearchParams({ path: "/calendar/action/compose", rru: "addevent", subject: calSubject(a), body: calBody(a),
       startdt: t.allDay ? a.faellig : localIso(t.start), enddt: t.allDay ? addDays(a.faellig, 1) : localIso(t.end) });
     if (t.allDay) q.set("allday", "true");
-    if (a.projekt) q.set("location", a.projekt);
+    if (a.ort || a.projekt) q.set("location", a.ort || a.projekt);
     window.open("https://outlook.office.com/calendar/0/deeplink/compose?" + q.toString(), "_blank", "noopener");
   }
   function downloadIcs(a) {
@@ -586,7 +597,7 @@
       t.allDay ? "DTSTART;VALUE=DATE:" + a.faellig.replace(/-/g, "") : "DTSTART:" + utc(t.start),
       t.allDay ? "DTEND;VALUE=DATE:" + addDays(a.faellig, 1).replace(/-/g, "") : "DTEND:" + utc(t.end),
       "SUMMARY:" + escI(calSubject(a)), "DESCRIPTION:" + escI(calBody(a))];
-    if (a.projekt) lines.push("LOCATION:" + escI(a.projekt));
+    if (a.ort || a.projekt) lines.push("LOCATION:" + escI(a.ort || a.projekt));
     lines.push("END:VEVENT", "END:VCALENDAR");
     const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
     const link = el("a"); link.href = URL.createObjectURL(blob); link.download = (calSubject(a).replace(/[\\/:*?"<>|]+/g, "").slice(0, 60) || "Termin") + ".ics";

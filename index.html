@@ -74,6 +74,7 @@
       <div class="add-parse" id="addParse" hidden></div>
       <div class="add-more">
         <input id="addProjekt" list="projektListe" placeholder="Projekt / Kunde" aria-label="Projekt">
+        <input id="addOrt" placeholder="Ort / Adresse" aria-label="Ort oder Adresse">
         <select id="addWer" aria-label="Zuständig"></select>
         <input id="addFaellig" type="date" aria-label="Fällig am">
         <input id="addZeit" type="time" aria-label="Uhrzeit">
@@ -117,6 +118,7 @@
     <div class="grid2">
       <label>Projekt / Kunde<input id="dProjekt" list="projektListe"></label>
       <label>Zuständig<select id="dWer"></select></label>
+      <label class="wide">Ort / Adresse<span class="with-btn"><input id="dOrt" placeholder="z. B. Musterweg 5, Freiamt"><button class="btn" type="button" id="routeBtn" hidden>Route</button></span></label>
       <label>Fällig am<input id="dFaellig" type="date"></label>
       <label>Uhrzeit<input id="dZeit" type="time"></label>
       <label class="toggle pad"><input id="dDringend" type="checkbox"><span>Dringend</span></label>
