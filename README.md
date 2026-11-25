@@ -16,7 +16,7 @@ Gemeinsame Aufgabenliste für Büro und Meister. Läuft im Browser auf Handy, Ta
 - `config.js`: Supabase-URL und öffentlicher Schlüssel. Ohne Eintrag läuft die App im Vorschau-Modus mit Beispieldaten im Browser.
 - `supabase-setup.sql`: legt Tabellen, Zugriffsregeln und Live-Abgleich an
 - Anmeldung: ein Supabase-Nutzer `team@schwarzwald-schreinerei.de`, dessen Passwort der Team-Code ist. Team-Code ändern: Supabase → Authentication → Users → Nutzer → Passwort ändern (danach müssen sich alle neu anmelden).
-- `lib/supabase.js`: supabase-js 2.45.4 (MIT-Lizenz), lokal abgelegt
+- `lib/supabase.js`: supabase-js 2.119.0 (MIT-Lizenz), lokal abgelegt
 
 ## Fenster-Aufmaß (`/aufmass/`)
 - Elementtypen: Fenster 1-/2-flg. (Stulp oder Pfosten), 3-teilig, mit Oberlicht, Festverglasung, Balkontür 1-/2-flg., Hebe-Schiebe-Tür, Haustür (auch mit Seitenteil/Oberlicht), gekoppelte Elemente (frei 1–6 Spalten × 1–4 Reihen), Sonderform
