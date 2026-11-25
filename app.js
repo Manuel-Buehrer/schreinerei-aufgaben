@@ -702,42 +702,90 @@
   $("installBtn").onclick = async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice; installEvt = null; $("installBtn").hidden = true; };
 
   // ---------- Spracheingabe ----------
+  // Hört durchgehend zu (auch bei kurzen Pausen), zeigt den Text live an,
+  // endet mit „Fertig“ oder nach 3 s Stille. Danach wird der Satz einsortiert.
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, recBtn = null, recTarget = null, recBase = "";
-  function stopMic() { if (rec) { try { rec.stop(); } catch (e) { } } }
+  const ERR = {
+    "not-allowed": "Mikrofon ist blockiert – beim Schloss-Symbol neben der Adresse erlauben bzw. in Windows unter Datenschutz → Mikrofon.",
+    "service-not-allowed": "Spracheingabe ist in diesem Browser gesperrt – Chrome oder Edge verwenden oder Windows-Taste + H.",
+    "audio-capture": "Kein Mikrofon gefunden – ist ein Mikrofon/Headset angeschlossen und in Windows als Eingabe gewählt?",
+    "network": "Spracheingabe braucht Internet – Verbindung prüfen.",
+    "language-not-supported": "Deutsch wird hier für die Spracheingabe nicht unterstützt."
+  };
+  const L = { rec: null, btn: null, target: null, base: "", orig: "", finalTxt: "", interim: "", active: false, heard: false, silenceT: null, startT: 0, fatal: false };
+  function setTargetText() {
+    let txt = (L.finalTxt + " " + L.interim).replace(/\s+/g, " ").trim();
+    if (txt && !L.base) txt = txt[0].toUpperCase() + txt.slice(1);
+    L.target.value = L.base + txt;
+    if (L.target.tagName === "TEXTAREA") autoGrow(L.target);
+    $("listenText").textContent = txt || "…";
+    if (L.target.id === "addTitle") L.target.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  function armSilence() {
+    clearTimeout(L.silenceT);
+    L.silenceT = setTimeout(() => finishMic(), L.heard ? 3000 : 9000);
+  }
+  function startRec() {
+    const rec = new SR(); L.rec = rec;
+    rec.lang = "de-DE"; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 1;
+    rec.onresult = ev => {
+      let fin = "", inter = "";
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const r = ev.results[i];
+        if (r.isFinal) fin += " " + r[0].transcript; else inter += " " + r[0].transcript;
+      }
+      if (fin) L.finalTxt = (L.finalTxt + " " + fin).trim();
+      L.interim = inter.trim();
+      if ((fin + inter).trim()) L.heard = true;
+      setTargetText(); armSilence();
+    };
+    rec.onerror = ev => {
+      if (ev.error === "no-speech" || ev.error === "aborted") return;
+      L.fatal = true; toast(ERR[ev.error] || ("Spracheingabe nicht möglich (" + ev.error + "). Tipp am PC: Windows-Taste + H."));
+    };
+    rec.onend = () => {
+      // Manche Browser beenden nach kurzer Pause von selbst – dann einfach weiterhören
+      if (L.active && !L.fatal && Date.now() - L.startT < 120000) {
+        if (L.interim) { L.finalTxt = (L.finalTxt + " " + L.interim).trim(); L.interim = ""; }
+        try { startRec(); return; } catch (e) { }
+      }
+      if (L.active) finishMic(L.fatal);
+    };
+    rec.start();
+  }
+  function beginMic(btn) {
+    const target = $(btn.dataset.mic);
+    Object.assign(L, { btn, target, orig: target.value, base: target.value ? target.value.replace(/\s+$/, "") + " " : "",
+      finalTxt: "", interim: "", active: true, heard: false, fatal: false, startT: Date.now() });
+    btn.classList.add("rec");
+    $("listenText").textContent = "…"; $("listenBar").hidden = false;
+    try { startRec(); armSilence(); }
+    catch (err) { L.active = false; btn.classList.remove("rec"); $("listenBar").hidden = true; toast("Spracheingabe konnte nicht starten. Tipp am PC: Windows-Taste + H."); }
+  }
+  function finishMic(cancel) {
+    if (!L.active) return;
+    L.active = false; clearTimeout(L.silenceT);
+    try { L.rec && L.rec.stop(); } catch (e) { }
+    if (L.interim) { L.finalTxt = (L.finalTxt + " " + L.interim).trim(); L.interim = ""; }
+    const t = L.target;
+    if (cancel === true) { t.value = L.orig; if (t.id === "addTitle") t.dispatchEvent(new Event("input", { bubbles: true })); }
+    else {
+      setTargetText();
+      if (!L.heard && !L.fatal) toast("Nichts gehört – Mikrofon prüfen und direkt nach dem Klick lossprechen.");
+      if (["dNotiz", "dTitel"].includes(t.id)) t.dispatchEvent(new Event("change"));
+    }
+    L.btn.classList.remove("rec"); $("listenBar").hidden = true; L.rec = null;
+    t.focus();
+  }
+  function stopMic() { if (L.active) finishMic(); }
+  $("listenDone").onclick = () => finishMic();
+  $("listenCancel").onclick = () => finishMic(true);
   document.addEventListener("click", e => {
     const b = e.target.closest(".mic"); if (!b) return;
     e.preventDefault();
-    if (!SR) { toast("Spracheingabe geht in diesem Browser nicht – bitte das Mikrofon auf der Tastatur benutzen."); $(b.dataset.mic).focus(); return; }
-    if (rec && recBtn === b) { stopMic(); return; }
-    stopMic();
-    const target = $(b.dataset.mic);
-    rec = new SR(); rec.lang = "de-DE"; rec.interimResults = true; rec.continuous = false;
-    recBtn = b; recTarget = target; recBase = target.value ? target.value.replace(/\s+$/, "") + " " : "";
-    b.classList.add("rec");
-    rec.onresult = ev => {
-      let txt = ""; for (let i = 0; i < ev.results.length; i++) txt += ev.results[i][0].transcript;
-      txt = txt.trim(); if (txt && !recBase) txt = txt[0].toUpperCase() + txt.slice(1);
-      recTarget.value = recBase + txt; if (recTarget.tagName === "TEXTAREA") autoGrow(recTarget); if (recTarget.id === "addTitle") recTarget.dispatchEvent(new Event("input", { bubbles: true }));
-    };
-    rec.onerror = ev => {
-      const m = {
-        "not-allowed": "Mikrofon ist blockiert – beim Schloss-Symbol neben der Adresse erlauben bzw. in Windows unter Datenschutz → Mikrofon.",
-        "service-not-allowed": "Spracheingabe ist in diesem Browser gesperrt – Chrome oder Edge verwenden oder Windows-Taste + H.",
-        "audio-capture": "Kein Mikrofon gefunden – ist ein Mikrofon/Headset angeschlossen?",
-        "network": "Spracheingabe braucht Internet – Verbindung prüfen.",
-        "no-speech": "Nichts gehört – nochmal versuchen und direkt lossprechen.",
-        "language-not-supported": "Deutsch wird hier für die Spracheingabe nicht unterstützt."
-      };
-      if (ev.error !== "aborted") toast(m[ev.error] || ("Spracheingabe nicht möglich (" + ev.error + "). Tipp am PC: Windows-Taste + H."));
-    };
-    rec.onend = () => {
-      b.classList.remove("rec");
-      const t = recTarget; rec = null; recBtn = null; recTarget = null;
-      if (t && ["dNotiz", "dTitel"].includes(t.id)) t.dispatchEvent(new Event("change"));
-      if (t) t.focus();
-    };
-    try { rec.start(); } catch (err) { b.classList.remove("rec"); rec = null; }
+    if (!SR) { toast("Spracheingabe geht in diesem Browser nicht – Chrome, Edge oder Safari verwenden, oder die Diktierfunktion der Tastatur (am PC: Windows-Taste + H)."); $(b.dataset.mic).focus(); return; }
+    if (L.active) { const same = L.btn === b; finishMic(); if (same) return; }
+    beginMic(b);
   });
 
   // ---------- los ----------

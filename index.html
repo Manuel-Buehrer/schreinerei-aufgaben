@@ -199,6 +199,12 @@
   </div>
 </div>
 
+<div class="listen" id="listenBar" hidden role="status" aria-live="polite">
+  <span class="listen-dot" aria-hidden="true"></span>
+  <div class="listen-main"><b>Ich höre zu …</b><span id="listenText">…</span></div>
+  <button class="btn" type="button" id="listenCancel">Abbrechen</button>
+  <button class="btn primary" type="button" id="listenDone">Fertig</button>
+</div>
 <div class="toast" id="toast" role="status"></div>
 
 <script src="lib/supabase.js"></script>
